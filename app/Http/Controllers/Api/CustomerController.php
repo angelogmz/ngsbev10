@@ -42,7 +42,7 @@ class CustomerController extends Controller
             'civil_status' => 'required|string|max:12',
             'contact_no' => 'required|digits:10',
             'address'=> 'required|string|max:200',
-            'email'=> 'email|max:50',
+            'email'=> 'nullable|email|max:50',
             'centre'=> 'required|string|max:200',
             'remarks' => 'nullable|string|max:300'
         ]);
