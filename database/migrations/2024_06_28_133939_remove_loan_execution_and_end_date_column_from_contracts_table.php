@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('contracts', function (Blueprint $table) {
-            $table->string('loan_execution_date')->nullable()->after('compounding');
-            $table->string('loan_end_date')->nullable()->after('loan_execution_date');
+            if (Schema::hasColumn('contracts', 'loan_execution_date')) {
+
+                $table->dropColumn('loan_execution_date');
+                $table->dropColumn('loan_end_date');
+
+            }
         });
     }
 
@@ -23,8 +27,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('contracts', function (Blueprint $table) {
-            $table->dropColumn('loan_execution_date');
-            $table->dropColumn('loan_end_date');
+            $table->string('loan_execution_date');
+            $table->string('loan_end_date');
         });
     }
 };
