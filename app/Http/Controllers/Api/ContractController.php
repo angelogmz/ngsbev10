@@ -60,7 +60,9 @@ class ContractController extends Controller
             'total_payment' => 'required',
             'total_interest' => 'required',
             'def_int_rate' => 'required',
-            'compounding' => 'string'
+            'compounding' => 'string',
+            'loan_execution_date' => 'date',
+            'loan_end_date' => 'date'
         ]);
 
 
@@ -85,7 +87,9 @@ class ContractController extends Controller
             'total_payment' => $request->total_payment,
             'total_interest' => $request->total_interest,
             'def_int_rate' => $request->def_int_rate,
-            'compounding'=> $request->compounding
+            'compounding'=> $request->compounding,
+            'loan_execution_date'=> $request->loan_execution_date,
+            'loan_end_date'=> $request->loan_end_date,
             ]);
 
             if($contract){
@@ -135,7 +139,9 @@ class ContractController extends Controller
             'total_payment' => 'required',
             'total_interest' => 'required',
             'def_int_rate' => 'required',
-            'compounding' => 'string'
+            'compounding' => 'string',
+            'loan_execution_date' => 'date',
+            'loan_end_date' => 'date'
         ]);
 
         if($validator->fails()){
@@ -168,6 +174,8 @@ class ContractController extends Controller
                     'total_interest' => $request->total_interest,
                     'def_int_rate' => $request->def_int_rate,
                     'compounding' => $request->compounding,
+                    'loan_execution_date'=> $request->loan_execution_date,
+                    'loan_end_date'=> $request->loan_end_date,
                 ]);
 
                 return response()->json([

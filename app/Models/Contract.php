@@ -27,6 +27,8 @@ class Contract extends Model
         'total_interest',
         'def_int_rate',
         'compounding',
+        'loan_execution_date',
+        'loan_end_date',
         'status',
     ];
 
