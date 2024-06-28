@@ -44,8 +44,6 @@ class CustomerController extends Controller
             'address'=> 'required|string|max:200',
             'email'=> 'email|max:50',
             'centre'=> 'required|string|max:200',
-            'loan_execution_date' => 'required|date',
-            'loan_end_date' => 'required|date',
             'remarks' => 'nullable|string|max:300'
         ]);
 
@@ -68,8 +66,6 @@ class CustomerController extends Controller
                 'address'=> $request->address,
                 'email'=> $request->email,
                 'centre'=>$request->centre,
-                'loan_execution_date' => $request->loan_execution_date,
-                'loan_end_date'=> $request->loan_end_date,
                 'remarks' => $request->remarks,
             ]);
 
@@ -171,8 +167,6 @@ class CustomerController extends Controller
             'address'=> 'required|string|max:200',
             'email'=> 'email|max:50',
             'centre'=> 'required|string|max:200',
-            'loan_execution_date' => 'required|date',
-            'loan_end_date' => 'required|date',
             'remarks' => 'nullable|string|max:300'
         ]);
 
@@ -199,8 +193,6 @@ class CustomerController extends Controller
                     'address'=> $request->address,
                     'email'=> $request->email,
                     'centre'=>$request->centre,
-                    'loan_execution_date' => $request->loan_execution_date,
-                    'loan_end_date'=> $request->loan_end_date,
                     'remarks' => $request->remarks,
                 ]);
                 return response()->json([

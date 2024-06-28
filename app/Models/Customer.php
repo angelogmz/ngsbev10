@@ -22,8 +22,6 @@ class Customer extends Model
         'address',
         'email',
         'centre',
-        'loan_execution_date',
-        'loan_end_date',
         'remarks',
     ];
 
