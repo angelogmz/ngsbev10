@@ -65,11 +65,23 @@ class User extends Authenticatable
      */
     public static function generateUsername($name)
     {
-        $username = substr(str_replace(' ', '', $name), 0, 6);
-        $suffix = 1;
+        // Remove vowels
+        $username = preg_replace('/[aeiouAEIOU]/', '', $name);
 
+        // Remove spaces and convert to lowercase
+        $username = strtolower(str_replace(' ', '', $username));
+
+        // Shuffle the characters
+        // $username = str_shuffle($username);
+
+        // Trim to the first 6 characters
+        $username = substr($username, 0, 6);
+
+        // Ensure uniqueness
+        $originalUsername = $username;
+        $suffix = 1;
         while (self::where('username', $username)->exists()) {
-            $username = substr(str_replace(' ', '', $name), 0, 6) . $suffix;
+            $username = $originalUsername . $suffix;
             $suffix++;
         }
 
