@@ -21,6 +21,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'username',
     ];
 
     /**
@@ -41,4 +42,37 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
     ];
+
+    /**
+     * Boot the model.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($user) {
+            if (empty($user->username)) {
+                $user->username = self::generateUsername($user->name);
+            }
+        });
+    }
+
+    /**
+     * Generate a username from the given name.
+     *
+     * @param string $name
+     * @return string
+     */
+    public static function generateUsername($name)
+    {
+        $username = substr(str_replace(' ', '', $name), 0, 6);
+        $suffix = 1;
+
+        while (self::where('username', $username)->exists()) {
+            $username = substr(str_replace(' ', '', $name), 0, 6) . $suffix;
+            $suffix++;
+        }
+
+        return $username;
+    }
 }

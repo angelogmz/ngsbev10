@@ -100,9 +100,30 @@ class UserController extends Controller
         }
     }
 
-    public function profile(){
-        try{
-            $userData = auth()->user();
+    public function profile()
+    {
+        try {
+            // Check if the user is authenticated
+            if (auth()->check()) {
+                $user = auth()->user();
+
+                // Get user attributes
+                $userData = [
+                    'name' => $user->name,
+                    'username' => $user->username,
+                    // Add other attributes as needed
+                ];
+
+                return response()->json([
+                    'status' => true,
+                    'data' => $userData
+                ]);
+            } else {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
@@ -110,6 +131,7 @@ class UserController extends Controller
             ], 500);
         }
     }
+
 
     public function logoutUser(Request $request){
         $user = $request->user();
