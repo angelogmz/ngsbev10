@@ -30,7 +30,7 @@ class GuarantorController extends Controller
             'date_of_birth' => 'required|string',
             'contact_no' => 'required|digits:10',
             'address'=> 'required|string|max:200',
-            'email'=> 'email|max:50'
+            'email'=> 'nullable|email|max:50'
         ]);
 
 
