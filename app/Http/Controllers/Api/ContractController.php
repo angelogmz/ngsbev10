@@ -44,6 +44,25 @@ class ContractController extends Controller
         }
     }
 
+    public function findContractEndingWith($contract_no){
+        $contractDetails = Contract::where('contract_no', 'like', '%'.$contract_no)
+        ->orderBy('id', 'desc') // Ensure you get the latest one
+        ->first();
+        if($contractDetails){
+            return response()->json([
+                'status' => 200,
+                'contract' => $contractDetails
+            ], 200);
+        }
+        else{
+
+            return response()->json([
+                'status' => 404,
+                'message' => 'No such Contract found'
+            ], 500);
+        }
+    }
+
     public function addContract(Request $request){
 
         $validator = Validator::make($request->all(), [

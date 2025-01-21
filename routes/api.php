@@ -76,5 +76,7 @@ Route::group([
     Route::put('contracts/{id}/edit', [ContractController::class, 'updateContract']);
 
     Route::get('contracts/search/{contract_no}', [ContractController::class, 'findContract']);
+
+    Route::get('contracts/searchbyuser/{userNameVal}', [ContractController::class, 'findContractEndingWith']);
 });
 
