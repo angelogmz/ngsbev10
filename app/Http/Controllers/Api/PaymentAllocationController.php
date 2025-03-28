@@ -108,187 +108,197 @@ class PaymentAllocationController extends Controller
         // Access the def_int_rate value
         $contractDefIntRate = $data->def_int_rate;
 
-        $this->refreshAmortizationSchedule($data->contract);
-        $prev_payment_date = '';
-        $currentTimestamp = '';
-        $prev_excess = 0; // Track excess from the previous loop
-        $future_rent = 0;
-        $deductableAmount = 0; // Floating variable to track the amount to be deducted from the payment
-        $carry_forward = 0; // Track carry forward amount
+        $refreshAmortization = $this->refreshAmortizationSchedule($data->contract);
+        if($refreshAmortization){
+            $prev_payment_date = '';
+            $currentTimestamp = '';
+            $prev_excess = 0; // Track excess from the previous loop
+            $future_rent = 0;
+            $deductableAmount = 0; // Floating variable to track the amount to be deducted from the payment
+            $carry_forward = 0; // Track carry forward amount
 
-        // Initialize empty array before your loop starts
-        $breakdowns = [];
+            // Initialize empty array before your loop starts
+            $breakdowns = [];
 
-        foreach ($payments as $payment) {
-            $payment_amount = $payment->payment_amount;
-            $payment_date = $payment->payment_date;
-            // Initialize breakdown values
-            $payment_id = $payment->pymnt_id;
-            $overdue_amount = 0;
-            $overdue_interest = 0;
-            $current_interest = 0;
-            $current_principal = 0;
-            $this->$future_rent = 0;
+            foreach ($payments as $payment) {
+                $payment_amount = $payment->payment_amount;
+                $payment_date = $payment->payment_date;
+                // Initialize breakdown values
+                $payment_id = $payment->pymnt_id;
+                $overdue_amount = 0;
+                $overdue_interest = 0;
+                $current_interest = 0;
+                $current_principal = 0;
+                $this->$future_rent = 0;
 
-            // Add previous excess to the current payment
-            $payment_amount += $prev_excess;
-            $deductableAmount = $payment_amount;
-
-
-
-            if($prev_payment_date == ''){
-                $prev_payment_date = $payment_date;
-            }
-            else{
-                // Convert dates to timestamps
-                $prev_payment_date = Carbon::parse($prev_payment_date);
-                $currentTimestamp = Carbon::parse($payment_date)
-                ->hour(0)
-                ->minute(0)
-                ->second(0);
-                $date_diff=$prev_payment_date->diffInDays($currentTimestamp);
-            }
-
-            // Fetch all incomplete amortization schedules for the given contract
-            $amortizationSchedules = MasterAmortization::where('contract_no', $contract_no)
-            ->where('completed', false)
-            ->orderBy('due_date')
-            ->get();
-
-                // Loop through amortization schedules to allocate the payment
-                foreach ($amortizationSchedules as $amortization) {
-                    $balanceUpDate = 0;
-                    $varAmorComplete = 0;
-
-                    if ($amortization->completed) {
-                        continue; // Skip completed rows
-                    }
-
-                    $due_date = new Carbon($amortization->due_date);
-                    $toBePaid = $amortization->balance_payment - $prev_excess;
-                    $deductableAmount = 0;
-
-                    if($currentTimestamp <= $due_date){
-                        if($amortization->balance_payment < 0){
-                            $prev_excess = abs($balanceUpDate);
-                        }
-                        $payment_amount += $prev_excess;
-                        $deductableAmount = $payment_amount;
-                        $balanceUpDate = $amortization->balance_payment - $payment_amount;
-
-                        $current_interest = $amortization->interest;
-                        $current_principal = $deductableAmount - $current_interest;
-
-                        if($balanceUpDate <= 0){
-                            $varAmorComplete = 1;
-                            $this->$future_rent = abs($balanceUpDate);
-                        }
-                        else{
-                            $varAmorComplete = 0;
-                            $this->$future_rent = abs($balanceUpDate);
-                        }
-
-                        $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
-
-                    }
-                    else{
-                        if($prev_payment_date <= $due_date){
-                            $DiffV = ($currentTimestamp)->diffInDays($due_date);
-                            $due_date = Carbon::parse($due_date);
-                            $currentTimestamp = Carbon::parse($payment_date);
-                            // Convert dates to timestamps
-                            $contractArrears = $DiffV * $contractDefIntRate * $amortization->balance_payment / 100;
-                            $contractArrears = round($contractArrears, 2);
-                            $balanceUpDate = ($amortization->balance_payment + $contractArrears) - $payment_amount;
-                            $overdue_interest = $contractArrears;
-                            $overdue_amount = $payment_amount - $overdue_interest - $prev_excess;
-
-                            if($balanceUpDate <= 0){
-                                $varAmorComplete = 1;
-                                $prev_excess = abs($balanceUpDate);
-                            }
-                            else{
-                                $varAmorComplete = 0;
-                            }
-
-                            $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
-                        }
-                        else{
-                            $DiffV = ($currentTimestamp)->diffInDays($prev_payment_date);
-                            $contractArrears = $DiffV * $contractDefIntRate * $amortization->balance_payment / 100;
-                            $contractArrears = round($contractArrears, 2);
-                            $balanceUpDate = ($amortization->balance_payment + $contractArrears) - $payment_amount;
-                            $overdue_interest = $contractArrears;
-                            if($balanceUpDate <= 0){
-                                $varAmorComplete = 1;
-                                $prev_excess = abs($balanceUpDate);
-                                $overdue_amount = $payment_amount - $overdue_interest - $prev_excess;
-                                $this->$future_rent = $prev_excess;
-                                $balanceUpDate = 0;
-                            }
-                            else{
-                                $varAmorComplete = 0;
-                                $prev_excess = 0;
-                                $overdue_amount = $payment_amount;
-                                $balanceUpDate = $balanceUpDate - $overdue_interest;
-                                $this->$future_rent = $prev_excess = abs($balanceUpDate);
-                            }
-                            $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
-                        }
+                // Add previous excess to the current payment
+                $payment_amount += $prev_excess;
+                $deductableAmount = $payment_amount;
 
 
-                    }
 
+                if($prev_payment_date == ''){
                     $prev_payment_date = $payment_date;
-                    break;
+                }
+                else{
+                    // Convert dates to timestamps
+                    $prev_payment_date = Carbon::parse($prev_payment_date);
+                    $currentTimestamp = Carbon::parse($payment_date)
+                    ->hour(0)
+                    ->minute(0)
+                    ->second(0);
+                    $date_diff=$prev_payment_date->diffInDays($currentTimestamp);
                 }
 
-                // Save payment breakdown using the PaymentBreakdownService
-                // $this->paymentBreakdownService->savePaymentBreakdown(
-                //     $payment_id,
-                //     $data->contract->contract_no,
-                //     $overdue_amount,
-                //     $overdue_interest,
-                //     $current_interest,
-                //     $current_principal,
-                //     $this->$future_rent,
-                //     0
-                // );
+                // Fetch all incomplete amortization schedules for the given contract
+                $amortizationSchedules = MasterAmortization::where('contract_no', $contract_no)
+                ->where('completed', false)
+                ->orderBy('due_date')
+                ->get();
+
+                    // Loop through amortization schedules to allocate the payment
+                    foreach ($amortizationSchedules as $amortization) {
+                        $balanceUpDate = 0;
+                        $varAmorComplete = 0;
+
+                        if ($amortization->completed) {
+                            continue; // Skip completed rows
+                        }
+
+                        $due_date = new Carbon($amortization->due_date);
+                        $toBePaid = $amortization->balance_payment - $prev_excess;
+                        $deductableAmount = 0;
+
+                        if($currentTimestamp <= $due_date){
+                            if($amortization->balance_payment < 0){
+                                $prev_excess = abs($balanceUpDate);
+                            }
+                            $payment_amount += $prev_excess;
+                            $deductableAmount = $payment_amount;
+                            $balanceUpDate = $amortization->balance_payment - $payment_amount;
+
+                            $current_interest = $amortization->interest;
+                            $current_principal = $deductableAmount - $current_interest;
+
+                            if($balanceUpDate <= 0){
+                                $varAmorComplete = 1;
+                                $this->$future_rent = abs($balanceUpDate);
+                            }
+                            else{
+                                $varAmorComplete = 0;
+                                $this->$future_rent = abs($balanceUpDate);
+                            }
+
+                            $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
+
+                        }
+                        else{
+                            if($prev_payment_date <= $due_date){
+                                $DiffV = ($currentTimestamp)->diffInDays($due_date);
+                                $due_date = Carbon::parse($due_date);
+                                $currentTimestamp = Carbon::parse($payment_date);
+                                // Convert dates to timestamps
+                                $contractArrears = $DiffV * $contractDefIntRate * $amortization->balance_payment / 100;
+                                $contractArrears = round($contractArrears, 2);
+                                $balanceUpDate = ($amortization->balance_payment + $contractArrears) - $payment_amount;
+                                $overdue_interest = $contractArrears;
+                                $overdue_amount = $payment_amount - $overdue_interest - $prev_excess;
+
+                                if($balanceUpDate <= 0){
+                                    $varAmorComplete = 1;
+                                    $prev_excess = abs($balanceUpDate);
+                                }
+                                else{
+                                    $varAmorComplete = 0;
+                                }
+
+                                $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
+                            }
+                            else{
+                                $DiffV = ($currentTimestamp)->diffInDays($prev_payment_date);
+                                $contractArrears = $DiffV * $contractDefIntRate * $amortization->balance_payment / 100;
+                                $contractArrears = round($contractArrears, 2);
+                                $balanceUpDate = ($amortization->balance_payment + $contractArrears) - $payment_amount;
+                                $overdue_interest = $contractArrears;
+                                if($balanceUpDate <= 0){
+                                    $varAmorComplete = 1;
+                                    $prev_excess = abs($balanceUpDate);
+                                    $overdue_amount = $payment_amount - $overdue_interest - $prev_excess;
+                                    $this->$future_rent = $prev_excess;
+                                    $balanceUpDate = 0;
+                                }
+                                else{
+                                    $varAmorComplete = 0;
+                                    $prev_excess = 0;
+                                    $overdue_amount = $payment_amount;
+                                    $balanceUpDate = $balanceUpDate - $overdue_interest;
+                                    $this->$future_rent = $prev_excess = abs($balanceUpDate);
+                                }
+                                $this->updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete);
+                            }
+
+
+                        }
+
+                        $prev_payment_date = $payment_date;
+                        break;
+                    }
+
+                    // Save payment breakdown using the PaymentBreakdownService
+                    // $this->paymentBreakdownService->savePaymentBreakdown(
+                    //     $payment_id,
+                    //     $data->contract->contract_no,
+                    //     $overdue_amount,
+                    //     $overdue_interest,
+                    //     $current_interest,
+                    //     $current_principal,
+                    //     $this->$future_rent,
+                    //     0
+                    // );
 
 
 
-                // Collect the breakdown data
-                $breakdownData = [
-                    'pymnt_id' => $payment_id,
-                    'contract_no' => $data->contract->contract_no,
-                    'overdue_rent' => $overdue_amount,
-                    'overdue_interest' => $overdue_interest,
-                    'current_interest' => $current_interest,
-                    'current_rent' => $current_principal,
-                    'future_rent' => $this->$future_rent,
-                    'excess' => 0
-                ];
+                    // Collect the breakdown data
+                    $breakdownData = [
+                        'pymnt_id' => $payment_id,
+                        'contract_no' => $data->contract->contract_no,
+                        'overdue_rent' => $overdue_amount,
+                        'overdue_interest' => $overdue_interest,
+                        'current_interest' => $current_interest,
+                        'current_rent' => $current_principal,
+                        'future_rent' => $this->$future_rent,
+                        'excess' => 0
+                    ];
 
-                // Add to the collection array
-                $breakdowns[] = $breakdownData;
-
-
+                    // Add to the collection array
+                    $breakdowns[] = $breakdownData;
 
 
+
+
+            }
+
+            $results = $this->paymentBreakdownService->processBreakdownsFromJson($breakdowns);
+
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Payments allocated successfully!'
+            ], 200);
+
+            return response()->json([
+                'status' => 404,
+                'message' => 'Payments allocation unsuccessfull'
+            ], 404);
+        }
+        else{
+            echo 'error !';
+            return response()->json([
+                'status' => 404,
+                'message' => 'Unsuccessful!',
+            ], 404);
         }
 
-        $results = $this->paymentBreakdownService->processBreakdownsFromJson($breakdowns);
-
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Payments allocated successfully!'
-        ], 200);
-
-        return response()->json([
-            'status' => 404,
-            'message' => 'Payments allocation unsuccessfull'
-        ], 404);
     }
 
     public function updateAmortization($contract_no, $due_date, $balanceUpDate, $varAmorComplete){
