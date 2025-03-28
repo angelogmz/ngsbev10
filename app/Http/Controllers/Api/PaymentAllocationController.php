@@ -294,9 +294,9 @@ class PaymentAllocationController extends Controller
         else{
             echo 'error !';
             return response()->json([
-                'status' => 404,
+                'status' => 500,
                 'message' => 'Unsuccessful!',
-            ], 404);
+            ], 500);
         }
 
     }
