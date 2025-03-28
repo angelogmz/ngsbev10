@@ -54,7 +54,7 @@ class PaymentAllocationController extends Controller
     public function refreshAmortizationSchedule($contract)
     {
         // Fetch or generate the amortization schedule
-        $amortizationSchedule = $this->amortizationService->refreshAmortizationSchedule($contract);
+        $amortizationSchedule = $this->amortizationService->getOrGenerateAmortizationSchedule($contract);
 
         if($amortizationSchedule){
             return response()->json([
@@ -109,7 +109,7 @@ class PaymentAllocationController extends Controller
             // Access the def_int_rate value
             $contractDefIntRate = $data->def_int_rate;
 
-            $refreshAmortization = $this->refreshAmortizationSchedule($data->contract);
+            $refreshAmortization = $this->refreshAmortizationSchedule($data->contract->contract_no);
 
             if($refreshAmortization){
 
