@@ -28,8 +28,10 @@ class AmortizationService
 
     public function refreshAmortizationSchedule($contract)
     {
+
         // Step 1: Get the new amortization schedule
         $newSchedule = $this->generateAmortizationSchedule($contract);
+
 
         // Step 2: Get existing records ordered by their expected sequence
         $existingRecords = MasterAmortization::where('contract_no', $contract->contract_no)
