@@ -51,9 +51,9 @@ class PaymentAllocationController extends Controller
         }
     }
 
-    public function allocatePayments($contract_no){
 
-        $contractInterest = 0;
+
+    public function allocatePayments($contract_no){
 
         // Fetch all unallocated payments for the given contract
         $payments = Payment::where('contract_no', $contract_no)
@@ -64,7 +64,8 @@ class PaymentAllocationController extends Controller
         //$this->cleanPaymentBreakdowns($contract_no);
         $contractDetails = $this->getContractDetails($contract_no);
 
-        return  $contractDetails;
+        return $contractDetails;
+
 
     }
 
