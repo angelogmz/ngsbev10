@@ -88,6 +88,9 @@ Route::group([
 
     Route::get('contracts/searchbyuser/{userNameVal}', [ContractController::class, 'findContractEndingWith']);
 
+    //Amortization
     Route::get('/amortization-schedule/{contractNo}', [AmortizationController::class, 'getAmortizationSchedule']);
+
+
 });
 
