@@ -109,13 +109,13 @@ class PaymentAllocationController extends Controller
             // Access the def_int_rate value
             $contractDefIntRate = $data->def_int_rate;
 
-        $this->refreshAmortizationSchedule($data->contract);
-        $prev_payment_date = '';
-        $currentTimestamp = '';
-        $prev_excess = 0; // Track excess from the previous loop
-        $future_rent = 0;
-        $deductableAmount = 0; // Floating variable to track the amount to be deducted from the payment
-        $carry_forward = 0; // Track carry forward amount
+            $refreshAmortization = $this->refreshAmortizationSchedule($data->contract);
+            if($refreshAmortization){
+
+                $prev_excess = 0; // Track excess from the previous loop
+                $future_rent = 0;
+                $deductableAmount = 0; // Floating variable to track the amount to be deducted from the payment
+                $carry_forward = 0; // Track carry forward amount
 
                 // Initialize empty array before your loop starts
                 $breakdowns = [];
@@ -300,7 +300,7 @@ class PaymentAllocationController extends Controller
                 return response()->json([
                     'status' => 500,
                     'message' => 'Payments allocation unsuccessfull'
-                ], 500);
+                ], 5500);
             }
 
         }
