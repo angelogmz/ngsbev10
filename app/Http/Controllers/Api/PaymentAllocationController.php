@@ -99,7 +99,7 @@ class PaymentAllocationController extends Controller
         ->orderBy('payment_date')
         ->get();
 
-        $this->cleanPaymentBreakdowns($contract_no);
+        //$this->cleanPaymentBreakdowns($contract_no);
         $contractDetails = $this->getContractDetails($contract_no);
 
         // Decode the JSON content
@@ -244,16 +244,16 @@ class PaymentAllocationController extends Controller
                 }
 
                 // Save payment breakdown using the PaymentBreakdownService
-                $this->paymentBreakdownService->savePaymentBreakdown(
-                    $payment_id,
-                    $data->contract->contract_no,
-                    $overdue_amount,
-                    $overdue_interest,
-                    $current_interest,
-                    $current_principal,
-                    $this->$future_rent,
-                    0
-                );
+                // $this->paymentBreakdownService->savePaymentBreakdown(
+                //     $payment_id,
+                //     $data->contract->contract_no,
+                //     $overdue_amount,
+                //     $overdue_interest,
+                //     $current_interest,
+                //     $current_principal,
+                //     $this->$future_rent,
+                //     0
+                // );
 
 
 
