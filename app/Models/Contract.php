@@ -40,4 +40,9 @@ class Contract extends Model
         return $this->belongsToMany(Customer::class);
     }
 
+    public function amortizationSchedule()
+    {
+        return $this->hasMany(MasterAmortization::class, 'contract_no', 'contract_no');
+    }
+
 }

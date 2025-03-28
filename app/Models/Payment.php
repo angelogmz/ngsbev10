@@ -14,6 +14,16 @@ class payment extends Model
     protected $fillable = [
         'contract_no',
         'payment_amount',
-        'payment_date'
+        'payment_date',
+        'pymnt_id',
+        'receipt_id'
     ];
+
+    /**
+     * Get the breakdown associated with the payment.
+    */
+    public function breakdown()
+    {
+        return $this->hasOne(PaymentBreakdown::class, 'pymnt_id', 'pymnt_id');
+    }
 }
