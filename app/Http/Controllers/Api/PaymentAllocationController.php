@@ -19,14 +19,10 @@ class PaymentAllocationController extends Controller
 {
 
     protected $amortizationService;
-    protected $paymentBreakdownService;
 
-    public function __construct(
-        AmortizationService $amortizationService,
-        PaymentBreakdownService $paymentBreakdownService
-    ) {
+    public function __construct(AmortizationService $amortizationService)
+    {
         $this->amortizationService = $amortizationService;
-        $this->paymentBreakdownService = $paymentBreakdownService;
     }
 
     public function allocatePayments($contractNo)
