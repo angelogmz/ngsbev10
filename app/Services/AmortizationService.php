@@ -144,6 +144,8 @@ class AmortizationService
                     'principal' => number_format((float)$principal, 2, '.', ''),
                     'balance' => number_format((float)$balance, 2, '.', ''),
                     'balance_payment'=> number_format((float)$payment, 2, '.', ''),
+                    'balance_interest'=> number_format((float)$payment, 2, '.', ''),
+                    'balance_principal'=> number_format((float)$payment, 2, '.', ''),
                     'excess'=> number_format((float)0, 2, '.', ''),
                     'completed'=> 0
                 ];
@@ -184,6 +186,8 @@ class AmortizationService
                     'principal' => number_format((float)$principal, 2, '.', ''),
                     'balance' => number_format((float)$balance, 2, '.', ''),
                     'balance_payment'=> number_format((float)$payment, 2, '.', ''),
+                    'balance_interest'=> number_format((float)$interest, 2, '.', ''),
+                    'balance_principal'=> number_format((float)$principal, 2, '.', ''),
                     'excess'=> number_format((float)0, 2, '.', ''),
                     'completed'=> 0
                 ];

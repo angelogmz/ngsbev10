@@ -19,6 +19,8 @@ class MasterAmortization extends Model
         'principal',
         'balance',
         'balance_payment',
+        'balance_interest',
+        'balance_principal',
         'excess',
         'completed',
     ];

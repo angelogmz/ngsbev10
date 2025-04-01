@@ -2,6 +2,9 @@
 
 namespace App\Services;
 use App\Models\PaymentBreakdown;
+use App\Models\Contract;
+use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 
 class PaymentBreakdownService
 {
@@ -58,60 +61,186 @@ class PaymentBreakdownService
 
     }
 
-
-    public function processBreakdownsFromJson(array $breakdownsArray)
+    public function getAllUnallocatedPaymentBreakdowns($contract_no)
     {
-        $results = [
-            'updated' => 0,
-            'created' => 0,
-            'errors' => []
+        // Check for unallocated payments
+        $unAllocatedPayments = PaymentBreakdown::where('contract_no', $contract_no)
+            ->where('allocated', false)
+            ->get(); // Execute the query with get()
+
+        if ($unAllocatedPayments->isNotEmpty()) {
+            return $unAllocatedPayments;
+        }
+    }
+
+       /**
+     * Get or generate the amortization schedule for a given contract_no.
+     *
+     * @param string $contractNo
+     * @return array|null
+     */
+    public function refreshPaymentBreakdown(string $contractNo): array
+    {
+        // Get all payments for the contract
+        $allPayments = Payment::where('contract_no', $contractNo)
+            ->orderBy('payment_date')
+            ->get(['pymnt_id', 'contract_no','payment_amount','payment_date']);
+
+
+        // Fields to reset to 0
+        $zeroFields = [
+            'overdue_interest' => 0,
+            'overdue_rent' => 0,
+            'current_interest' => 0,
+            'current_rent' => 0,
+            'future_rent' => 0,
+            'excess' => 0
         ];
 
-        foreach ($breakdownsArray as $index => $breakdown) {
-            try {
-                // Find existing record
-                $existing = PaymentBreakdown::where([
-                    'pymnt_id' => $breakdown['pymnt_id'],
-                    'contract_no' => $breakdown['contract_no']
-                ])->first();
+        $results = [];
 
-                if ($existing) {
-                    // Update existing record
-                    $existing->update([
-                        'overdue_rent' => $breakdown['overdue_rent'],
-                        'overdue_interest' => $breakdown['overdue_interest'],
-                        'current_interest' => $breakdown['current_interest'],
-                        'current_rent' => $breakdown['current_rent'],
-                        'future_rent' => $breakdown['future_rent'],
-                        'excess' => $breakdown['excess'],
-                        'updated_at' => now()
-                    ]);
-                    $results['updated']++;
-                } else {
-                    // Create new record
-                    PaymentBreakdown::create([
-                        'pymnt_id' => $breakdown['pymnt_id'],
-                        'contract_no' => $breakdown['contract_no'],
-                        'overdue_rent' => $breakdown['overdue_rent'],
-                        'overdue_interest' => $breakdown['overdue_interest'],
-                        'current_interest' => $breakdown['current_interest'],
-                        'current_rent' => $breakdown['current_rent'],
-                        'future_rent' => $breakdown['future_rent'],
-                        'excess' => $breakdown['excess'],
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ]);
-                    $results['created']++;
-                }
-            } catch (\Exception $e) {
-                $results['errors'][$index] = [
-                    'error' => $e->getMessage(),
-                    'data' => $breakdown
-                ];
+        DB::transaction(function() use ($allPayments, $contractNo, $zeroFields, &$results) {
+            foreach ($allPayments as $payment) {
+                // Update or create the record
+
+                $breakdown = PaymentBreakdown::updateOrCreate(
+                    [
+                        'pymnt_id' => $payment->pymnt_id,
+                        'contract_no' => $contractNo
+                    ],
+                    array_merge([
+                        'payment_amount' => $payment->payment_amount,
+                        'payment_date' => $payment->payment_date
+                    ], $zeroFields)
+                );
+
+                //var_dump($breakdown->toArray());
+                $results[$payment->id] = $breakdown->toArray();
             }
-        }
+        });
 
-        return $results;
+        // Get ALL payment breakdowns for this contract (not just the ones we updated)
+        $allBreakdowns = PaymentBreakdown::where('contract_no', $contractNo)
+            ->get()
+            ->keyBy('pymnt_id')
+            ->toArray();
+
+        return $allBreakdowns;
     }
+
+    public function filterMissingBreakdowns(string $contractNo): array{
+        // Get all payment IDs from Payments table
+        $paymentIds = Payment::where('contract_no', $contractNo)
+        ->pluck('pymnt_id')
+        ->toArray();
+
+        // Get all payment IDs from PaymentBreakdown table
+        $breakdownIds = PaymentBreakdown::where('contract_no', $contractNo)
+        ->pluck('pymnt_id')
+        ->toArray();
+
+        // Find IDs that are in Payments but missing in PaymentBreakdown
+        $missingIds = array_diff($paymentIds, $breakdownIds);
+
+
+        // Get full records of missing payments
+        // $missingPayments = Payment::whereIn('pymnt_id', $missingIds)
+        // ->get(['pymnt_id', 'contract_no', 'payment_amount', 'payment_date']);
+
+        $missingPayments = Payment::whereIn('pymnt_id', $missingIds)
+        ->get(['pymnt_id', 'contract_no', 'payment_amount', 'payment_date'])
+        ->toArray();
+
+        //var_dump($missingPayments);
+
+        // Return or process the missing payments
+        return $missingPayments;
+    }
+
+
+    // public function processBreakdownsFromJson(array $breakdownsArray)
+    // {
+    //     $results = [
+    //         'updated' => 0,
+    //         'created' => 0,
+    //         'errors' => []
+    //     ];
+
+    //     foreach ($breakdownsArray as $index => $breakdown) {
+    //         try {
+    //             // Find existing record
+    //             $existing = PaymentBreakdown::where([
+    //                 'pymnt_id' => $breakdown['pymnt_id'],
+    //                 'contract_no' => $breakdown['contract_no']
+    //             ])->first();
+
+    //             if ($existing) {
+    //                 // Update existing record
+    //                 $existing->update([
+    //                     'overdue_rent' => $breakdown['overdue_rent'],
+    //                     'overdue_interest' => $breakdown['overdue_interest'],
+    //                     'current_interest' => $breakdown['current_interest'],
+    //                     'current_rent' => $breakdown['current_rent'],
+    //                     'future_rent' => $breakdown['future_rent'],
+    //                     'excess' => $breakdown['excess'],
+    //                     'updated_at' => now()
+    //                 ]);
+    //                 $results['updated']++;
+    //             } else {
+    //                 // Create new record
+    //                 PaymentBreakdown::create([
+    //                     'pymnt_id' => $breakdown['pymnt_id'],
+    //                     'contract_no' => $breakdown['contract_no'],
+    //                     'overdue_rent' => $breakdown['overdue_rent'],
+    //                     'overdue_interest' => $breakdown['overdue_interest'],
+    //                     'current_interest' => $breakdown['current_interest'],
+    //                     'current_rent' => $breakdown['current_rent'],
+    //                     'future_rent' => $breakdown['future_rent'],
+    //                     'excess' => $breakdown['excess'],
+    //                     'created_at' => now(),
+    //                     'updated_at' => now()
+    //                 ]);
+    //                 $results['created']++;
+    //             }
+    //         } catch (\Exception $e) {
+    //             $results['errors'][$index] = [
+    //                 'error' => $e->getMessage(),
+    //                 'data' => $breakdown
+    //             ];
+    //         }
+    //     }
+
+    //     return $results;
+    // }
+
+    // // In your PaymentBreakdownService
+    // public function updateBreakdownRecords(string $contractNo, array $breakdownData)
+    // {
+    //     // foreach ($breakdownData as $paymentId => $values) {
+    //     //     PaymentBreakdown::updateOrCreate(
+    //     //         [
+    //     //             'pymnt_id' => $paymentId,
+    //     //             'contract_no' => $contractNo
+    //     //         ],
+    //     //         $values
+    //     //     );
+    //     // }
+
+    //     //bulk update (Laravel 8+):
+    //     $updates = [];
+    //     foreach ($breakdownData as $paymentId => $values) {
+    //         $updates[] = [
+    //             'pymnt_id' => $paymentId,
+    //             'contract_no' => $contractNo,
+    //             ...$values
+    //         ];
+    //     }
+
+    //     PaymentBreakdown::upsert(
+    //         $updates,
+    //         ['pymnt_id', 'contract_no'],
+    //         array_keys(reset($breakdownData))
+    //     );
+    // }
 }
 ?>

@@ -31,12 +31,15 @@ class PaymentBreakdown extends Model
     protected $fillable = [
         'pymnt_id',
         'contract_no',
+        'payment_amount',
+        'payment_date',
         'overdue_interest',
         'overdue_rent',
         'current_interest',
         'current_rent',
         'future_rent',
         'excess',
+        'allocated'
     ];
 
     /**
