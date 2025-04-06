@@ -38,6 +38,8 @@ class PaymentBreakdown extends Model
         'current_interest',
         'current_rent',
         'future_rent',
+        'future_interest',
+        'future_principal',
         'excess',
         'allocated'
     ];

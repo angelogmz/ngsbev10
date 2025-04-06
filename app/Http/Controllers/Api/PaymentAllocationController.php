@@ -158,9 +158,6 @@ class PaymentAllocationController extends Controller
                     ->where('completed', false)
                     ->first();
 
-                    // var_dump($paymntBreakDown);
-                    // //var_dump($amortizationSchedule);
-                    // break;
 
                     $deductable = $paymntBreakDown['payment_amount'];
                     $pymnt_id = $paymntBreakDown['pymnt_id'];
@@ -178,6 +175,7 @@ class PaymentAllocationController extends Controller
 
                     $overDueInterest = 0;
                     $overdueRent = 0;
+                    $breakOverdueRent = null;
 
                     $amortInterestAllocation = $amortizationSchedule['balance_interest'];
                     $amortPrincipalAllocation = $amortizationSchedule['balance_principal'];
@@ -189,8 +187,6 @@ class PaymentAllocationController extends Controller
                     }
 
                     if ($payment_date <= $due_date) {
-
-                        echo 'inside current'. PHP_EOL;
 
                         $overDueInterest = 0;
                         $overdueRent = 0;
@@ -255,8 +251,8 @@ class PaymentAllocationController extends Controller
                     }
                     elseif($payment_date > $due_date){
 
-                        $interestAllocation = 0;
-                        $principalAllocation = 0;
+                        // $interestAllocation = 0;
+                        // $principalAllocation = 0;
 
                         $prev_payment_date = Carbon::parse($prev_payment_date);
                         $currentTimestamp = Carbon::parse($payment_date)
@@ -297,10 +293,22 @@ class PaymentAllocationController extends Controller
                                     $excess = 0;
                                 }
                                 if ($excess >= $overdueRent) {
+                                    if ($excess >= $interestAllocation) {
+                                        $interestAllocation = $excess;
+                                    } else {
+                                        $interestAllocation = 0;
+                                    }
+
                                     $excess -= $overdueRent;
                                 }
                                 elseif ($excess < $overdueRent) {
-                                    //$amortPrincipalAllocation -= $excess;
+
+                                    if ($excess >= $principalAllocation) {
+                                        $principalAllocation = $excess;
+                                    } else {
+                                        $principalAllocation = 0;
+                                    }
+
                                     $overdueRent -= $excess;
                                     $excess = 0;
                                 }
@@ -317,16 +325,65 @@ class PaymentAllocationController extends Controller
 
                                 if($deductable >= $overDueInterest) {
                                     $deductable -= $overDueInterest;
+
+                                    //echo 'deductable after overDueInterest' . $deductable . PHP_EOL;
+
                                     if ($deductable >= $overdueRent) {
+                                        //echo 'deductable >= overdueRent' . PHP_EOL;
+
+                                        if ($deductable >= $interestAllocation) {
+
+                                            $carryoverPrin = $deductable;
+
+                                            $carryoverPrin -= $interestAllocation;
+
+                                            if ($carryoverPrin >= $principalAllocation) {
+                                                $principalAllocation = $carryoverPrin;
+                                            } else {
+                                                $principalAllocation = 0;
+                                            }
+
+                                        } else {
+                                            $interestAllocation = 0;
+                                            $principalAllocation = $deductable;
+                                        }
+
                                         $deductable -= $overdueRent;
+                                        $overdueRent = 0;
                                     }
                                     elseif ($deductable < $overdueRent) {
-                                        $overdueRent -= $deductable;
+
+                                        $allocated = 1;
+
+                                        $overdueRent = $deductable;
+
+                                        //$amortInterestAllocation = $overdueRent;
+                                        if($deductable > $interestAllocation){
+                                            $amortInterestAllocation = 0;
+                                        }
+                                        else{
+                                            $amortInterestAllocation = $interestAllocation;
+                                            $amortInterestAllocation -= $deductable;
+                                        }
+
+                                        $deductable -= $interestAllocation;
+
+                                        if ($deductable > 0) {
+                                            if($deductable >= $principalAllocation) {
+                                                $amortPrincipalAllocation = 0;
+                                            } else {
+                                                $amortPrincipalAllocation = $principalAllocation;
+                                                $principalAllocation = $deductable;
+                                                $amortPrincipalAllocation -= $deductable;
+                                            }
+                                        }
+
                                         $deductable = 0;
                                     }
                                 }
                                 elseif ($deductable < $overDueInterest) {
                                     $overDueInterest -= $deductable;
+                                    $allocated = 1;
                                     $deductable = 0;
                                 }
                             }
@@ -359,7 +416,7 @@ class PaymentAllocationController extends Controller
                         $allocated = 1;
                     }
 
-                    $this->updateBreakdown(
+                    $updateBreak = $this->updateBreakdown(
                         $contract_no,
                         $pymnt_id,
                         $overDueInterest,
@@ -381,9 +438,11 @@ class PaymentAllocationController extends Controller
                         $varAmorComplete
                     );
 
-                    echo '$excess ' . $excess . PHP_EOL;
-                    // After your current payment processing, add this:
+                    $amort_future_interest = 0;
+                    $amort_future_principal = 0;
+
                     while ($excess > 0) {
+
                         $nextAmortization = MasterAmortization::where('contract_no', $contract_no)
                             ->where('completed', false)
                             ->where('due_date', '>', $due_date)
@@ -406,18 +465,22 @@ class PaymentAllocationController extends Controller
                             $excess -= $nextAmortization->balance_payment;
 
                             if ($nxtAmortDeductable >= $nxtAmortInt) {
+                                $amort_future_interest += $nxtAmortInt;
                                 $nxtAmortDeductable -= $nxtAmortInt;
                                 $nxtAmortInt = 0;
                                 if ($nxtAmortDeductable >= $nxtAmortPrincipal) {
+                                    $amort_future_principal += $nxtAmortPrincipal;
                                     $nxtAmortDeductable -= $nxtAmortPrincipal;
                                     $nxtAmortPrincipal = 0;
                                 }
                                 else{
+                                    $amort_future_principal += $nxtAmortDeductable;
                                     $nxtAmortPrincipal -= $nxtAmortDeductable;
                                     $nxtAmortDeductable = 0;
                                 }
                             }
                             elseif ($nxtAmortDeductable < $nxtAmortInt) {
+                                $amort_future_principal += $nxtAmortDeductable;
                                 $nxtAmortInt -= $nxtAmortDeductable;
                                 $nxtAmortDeductable = 0;
                             }
@@ -439,38 +502,51 @@ class PaymentAllocationController extends Controller
 
 
                             if ($nxtAmortDeductable >= $nxtAmortInt) {
+                                $amort_future_interest += $nxtAmortInt;
                                 $nxtAmortDeductable -= $nxtAmortInt;
                                 $nxtAmortInt = 0;
                                 if ($nxtAmortDeductable >= $nxtAmortPrincipal) {
+                                    $amort_future_principal += $nxtAmortPrincipal;
                                     $nxtAmortDeductable -= $nxtAmortPrincipal;
                                     $nxtAmortPrincipal = 0;
                                 }
                                 else{
+                                    $amort_future_principal += $nxtAmortDeductable;
                                     $nxtAmortPrincipal -= $nxtAmortDeductable;
                                     $nxtAmortDeductable = 0;
                                 }
                             }
                             elseif ($nxtAmortDeductable < $nxtAmortInt) {
+                                $amort_future_interest += $nxtAmortDeductable;
                                 $nxtAmortInt -= $nxtAmortDeductable;
                                 $nxtAmortDeductable = 0;
                             }
 
                             if ($nxtAmortDeductable >= $nxtAmortPrincipal) {
+                                $amort_future_principal += $nxtAmortPrincipal;
                                 $nxtAmortDeductable -= $nxtAmortPrincipal;
                                 $nxtAmortPrincipal = 0;
                             }
                             elseif($nxtAmortDeductable < $nxtAmortPrincipal){
+                                $amort_future_principal += $nxtAmortDeductable;
                                 $nxtAmortPrincipal -=$nxtAmortDeductable;
                                 $nxtAmortDeductable = 0;
                             }
 
                             $excess = 0;
                             $varAmorComplete = 0;
+
+                            $pymnt_id = $updateBreak->getData()->data->pymnt_id;
+
+                            $this->updateBreakdownFuture(
+                                $pymnt_id,
+                                $amort_future_interest,
+                                $amort_future_principal
+                            );
+
                         }
 
-                        // Update the next amortization
-                        // $nxtAmortInt,
-                        // $nxtAmortPrincipal,
+                        // Update the next amortization schedule
                         $this->updateAmortization(
                             $contract_no,
                             $nextAmortization->due_date,
@@ -483,20 +559,6 @@ class PaymentAllocationController extends Controller
                         // Update current due_date for next iteration
                         $due_date = $nextAmortization->due_date;
                     }
-
-                    // // [Continue with your existing breakdown update...]
-                    // $this->updateBreakdown(
-                    //     $contract_no,
-                    //     $pymnt_id,
-                    //     $overDueInterest,
-                    //     $overdueRent,
-                    //     $interestAllocation,
-                    //     $principalAllocation,
-                    //     $excess, // Will be 0 after while loop
-                    //     $allocated,
-                    //     $paymntBreakDown['payment_amount'],
-                    //     $paymntBreakDown['payment_date']
-                    // );
 
 
                     $prev_payment_date = $payment_date;
@@ -772,7 +834,7 @@ class PaymentAllocationController extends Controller
 
     }
 
-    public function updateBreakdown($contract_no, $pymnt_id, $overInt, $overRent, $curInt,  $curRent, $excessAmnt, $allocated ,$payment_amount,  $payment_date){
+    public function updateBreakdown($contract_no, $pymnt_id, $overInt, $overRent, $curInt,  $curRent, $excessAmnt, $allocated ,$payment_amount, $payment_date){
         $breakSchedule = PaymentBreakdown::where('contract_no', $contract_no)
         ->where('pymnt_id', $pymnt_id)
         ->first();
@@ -809,30 +871,24 @@ class PaymentAllocationController extends Controller
             'data' => $breakSchedule
         ], 200);
 
+    }
 
-        // if(!($contract_no && $pymnt_id)){
-        //     return response()->json([
-        //         'status' => 404,
-        //         'message' => 'Contract ID or Due Date not provided'
-        //     ], 404);
-        // }
-        // else{
-        //     // $breakSchedule->update([
-        //     //     'overdue_interest' => $overInt,
-        //     //     'overdue_rent' => $overRent,
-        //     //     'current_interest' => $curInt,
-        //     //     'current_rent' => $curRent,
-        //     //     'future_rent' => abs($excessAmnt),
-        //     //     'allocated' => $allocated
-        //     // ]);
+    public function updateBreakdownFuture(
+        $pymnt_id,
+        $future_interest,
+        $future_principal
+        ){
+    $brSchedule = PaymentBreakdown::where('pymnt_id', $pymnt_id)
+    ->first();
 
-        //     // return response()->json([
-        //     //     'status' => 200,
-        //     //     'message' => 'Schedule updated successfully!'
-        //     // ], 200);
-
-
-        // }
+    $brSchedule->update([
+            'future_interest' => $future_interest ?? 0,
+            'future_principal' => $future_principal ?? 0,
+        ]);
+    return response()->json([
+            'status' => 200,
+            'message' => 'Schedule updated successfully!'
+        ], 200);
     }
 
     public function updateAmortization(
