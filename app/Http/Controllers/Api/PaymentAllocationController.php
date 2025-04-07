@@ -397,8 +397,6 @@ class PaymentAllocationController extends Controller
 
                     }
 
-
-
                     if($updatedBalance <= 0){
                         $varAmorComplete = 1;
                     }
@@ -595,6 +593,8 @@ class PaymentAllocationController extends Controller
 
                     //echo '$allocated check : ' .  $paymntBreakDown['allocated'] . PHP_EOL;
 
+                    //echo ' incoming $carryOverExcess : ' . $carryOverExcess . PHP_EOL;
+
 
                     if($carryOverExcess > 0 && $prev_payment_id){
                         $prevBreakSchedule = PaymentBreakdown::where('pymnt_id', $prev_payment_id)
@@ -621,9 +621,13 @@ class PaymentAllocationController extends Controller
                     $payment_date = Carbon::parse($paymntBreakDown['payment_date']);
                     $due_date = Carbon::parse($amortizationSchedule->due_date);
 
+                    //echo $due_date;
+
 
                     $interestAllocation = $amortizationSchedule->balance_interest;
                     $principalAllocation = $amortizationSchedule->balance_principal;
+
+
 
                     $overDueInterest = 0;
                     $overdueRent = 0;
@@ -632,8 +636,11 @@ class PaymentAllocationController extends Controller
                     $amortPrincipalAllocation = $amortizationSchedule->balance_principal;
 
                     $updatedBalance = $amortizationSchedule->balance_payment;
+
+
+                    //echo $updatedBalance;
                     //$excess = $this->$excess;
-                    if($deductable < $updatedBalance){
+                    if($deductable > $updatedBalance){
                         $allocated = 1;
                     }
 
@@ -795,13 +802,10 @@ class PaymentAllocationController extends Controller
                         $varAmorComplete = 0;
                     }
 
-                    if($updatedBalance == 0 && $deductable == 0){
-                        if(!($carryOverExcess > 0)){
-                            $allocated = 1;
-                        }
-                    };
+                    $allocated = 1;
 
-                    $this->updateBreakdown(
+
+                    $updateBreak = $this->updateBreakdown(
                         $contract_no,
                         $pymnt_id,
                         $overDueInterest,
@@ -814,6 +818,7 @@ class PaymentAllocationController extends Controller
                         $paymntBreakDown['payment_date']
                     );
 
+
                     $this->updateAmortization(
                         $contract_no,
                         $due_date,
@@ -825,6 +830,97 @@ class PaymentAllocationController extends Controller
 
                     $prev_payment_date = $payment_date;
                     $prev_payment_id = $pymnt_id;
+
+                    $amort_future_interest = 0;
+                    $amort_future_principal = 0;
+                    $i = 1;
+
+                    //echo 'after deduct $carryOverExcess : ' . $carryOverExcess . PHP_EOL;
+
+                    if($carryOverExcess > 0){
+                        while ($carryOverExcess > 0) {
+
+                            $amortInterestAllocation = 0;
+                            $amortPrincipalAllocation = 0;
+
+                            $nextAmortization = MasterAmortization::where('contract_no', $contract_no)
+                                ->where('completed', false)
+                                ->where('due_date', '>', $due_date)
+                                ->orderBy('due_date')
+                                ->first();
+
+                            if (!$nextAmortization) {
+                                // No more amortizations to apply excess to
+                                $paymntBreakDown['future_rent'] = $carryOverExcess; // Store remaining excess
+                                break;
+                            }
+
+                            $nxtAmortInt = $nextAmortization->balance_interest;
+                            $nxtAmortPrincipal = $nextAmortization->balance_principal;
+                            $nxtAmortBalance = $nextAmortization->balance_payment;
+                            $nxtAmortdue_date = $nextAmortization->due_date;
+
+                            $amortPrincipalAllocation = $nextAmortization->balance_principal;
+                            $amortInterestAllocation = $nextAmortization->balance_interest;
+
+                            if($carryOverExcess >= $nxtAmortBalance){
+                                $nxtAmortBalance = 0;
+                                $amort_future_interest += $nxtAmortInt;
+                                $amortInterestAllocation = 0;
+                                $carryOverExcess -= $nxtAmortInt;
+                                if($carryOverExcess >= $nxtAmortPrincipal){
+                                    $amort_future_principal += $nxtAmortPrincipal;
+                                    $amortPrincipalAllocation = 0;
+                                    $carryOverExcess -= $nxtAmortPrincipal;
+                                }
+                                else{
+                                    $amort_future_principal += $excess;
+                                    $nxtAmortPrincipal -= $excess;
+                                    $amortPrincipalAllocation = $nxtAmortPrincipal;
+                                    $carryOverExcess = 0;
+                                }
+
+                                $varAmorComplete = 1;
+                            }
+                            else{
+                                $amort_future_interest += $carryOverExcess;
+                                $nxtAmortInt -= $carryOverExcess;
+                                $nxtAmortBalance -= $carryOverExcess;
+
+                                $amortInterestAllocation = $nxtAmortInt;
+                                $carryOverExcess = 0;
+                                $varAmorComplete = 0;
+                            }
+
+
+
+                            // Update current due_date for next iteration
+
+                            $pymnt_id = $updateBreak->getData()->data->pymnt_id;
+
+                            $this->updateBreakdownFuture(
+                                $pymnt_id,
+                                $amort_future_interest,
+                                $amort_future_principal
+                            );
+
+                            $this->updateAmortization(
+                                $contract_no,
+                                $nxtAmortdue_date,
+                                $nxtAmortBalance,
+                                $amortInterestAllocation,
+                                $amortPrincipalAllocation,
+                                $varAmorComplete
+                            );
+
+
+
+
+                            $i++;
+
+                            //$carryOverExcess = 0;
+                        }
+                    }
 
                 }
 
