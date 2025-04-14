@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\GuarantorController;
 use App\Http\Controllers\Api\AmortizationController;
 use App\Http\Controllers\Api\PaymentAllocationController;
+use App\Http\Controllers\Api\PaymentUuidController;
 
 /*
 |--------------------------------------------------------------------------
@@ -90,6 +91,10 @@ Route::group([
 
     //Amortization
     Route::get('/amortization-schedule/{contractNo}', [AmortizationController::class, 'getAmortizationSchedule']);
+
+    //UUID
+    Route::post('payments/add-uuids', [PaymentUuidController::class, 'addUuids']);
+
 
 
 });
