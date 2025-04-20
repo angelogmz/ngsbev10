@@ -6,10 +6,25 @@ use App\Models\Contract;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use App\Services\AmortizationService;
+use App\Services\PaymentBreakdownService;
 use Illuminate\Support\Facades\Validator;
+
 
 class ContractController extends Controller
 {
+    protected $amortizationService;
+    protected $paymentBreakdownService;
+
+    public function __construct(
+        AmortizationService $amortizationService,
+        PaymentBreakdownService $paymentBreakdownService
+    ) {
+        $this->amortizationService = $amortizationService;
+        $this->paymentBreakdownService = $paymentBreakdownService;
+    }
+
+
     public function index(){
         $contracts = Contract::all();
 
@@ -196,6 +211,9 @@ class ContractController extends Controller
                     'loan_execution_date'=> $request->loan_execution_date,
                     'loan_end_date'=> $request->loan_end_date,
                 ]);
+
+                $this->amortizationService->deleteAmortizationSchedule($request->contract_no);
+                $this->paymentBreakdownService->deletePaymentBreakdowns($request->contract_no);
 
                 return response()->json([
                     'status' => 200,

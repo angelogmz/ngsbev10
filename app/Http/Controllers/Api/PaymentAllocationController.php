@@ -91,8 +91,6 @@ class PaymentAllocationController extends Controller
         }
     }
 
-
-
     public function allocatePayments($contract_no){
         $allBreakdowns = PaymentBreakdown::where('contract_no', $contract_no)
         ->get();
@@ -614,6 +612,9 @@ class PaymentAllocationController extends Controller
                 return null;
             }
 
+            return response()->json([
+                'status' => 200
+            ], 200);
 
         }
         else{
@@ -632,11 +633,6 @@ class PaymentAllocationController extends Controller
 
                 foreach ($paymntBreakDownSchedule as &$paymntBreakDown) {
                     $allocated = 0;
-
-                    //echo '$allocated check : ' .  $paymntBreakDown['allocated'] . PHP_EOL;
-
-                    //echo ' incoming $carryOverExcess : ' . $carryOverExcess . PHP_EOL;
-
 
                     if($carryOverExcess > 0 && $prev_payment_id){
                         $prevBreakSchedule = PaymentBreakdown::where('pymnt_id', $prev_payment_id)
@@ -1006,18 +1002,18 @@ class PaymentAllocationController extends Controller
     }
 
     public function updateBreakdownFuture(
-        $pymnt_id,
-        $future_interest,
-        $future_principal
-        ){
-    $brSchedule = PaymentBreakdown::where('pymnt_id', $pymnt_id)
-    ->first();
+    $pymnt_id,
+    $future_interest,
+    $future_principal
+    ){
+        $brSchedule = PaymentBreakdown::where('pymnt_id', $pymnt_id)
+        ->first();
 
-    $brSchedule->update([
+        $brSchedule->update([
             'future_interest' => $future_interest ?? 0,
             'future_principal' => $future_principal ?? 0,
         ]);
-    return response()->json([
+        return response()->json([
             'status' => 200,
             'message' => 'Schedule updated successfully!'
         ], 200);
@@ -1065,4 +1061,18 @@ class PaymentAllocationController extends Controller
             ], 200);
         }
     }
+
+    public function getPaymentBreakdown($contract_no){
+        $paymentBreakdown = PaymentBreakdown::where('contract_no', $contract_no)->get();
+
+        if ($paymentBreakdown->isNotEmpty()) {
+            return $paymentBreakdown;
+        } else {
+            return response()->json([
+                'status' => 404,
+                'message' => 'No payment breakdowns found for this contract.'
+            ], 404);
+        }
+    }
+
 }

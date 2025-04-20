@@ -15,15 +15,11 @@ class AmortizationService
      * @param Contract $contract
      * @return void
      */
-    public function deleteAmortizationSchedule($contract)
+    public function deleteAmortizationSchedule($contractID)
     {
         // Step 1: Delete all existing rows for the contract
-        MasterAmortization::where('contract_no', $contract->contract_no)->delete();
+        MasterAmortization::where('contract_no', $contractID)->delete();
 
-        // Step 2: Generate the new amortization schedule
-        $amortizationTable = $this->getOrGenerateAmortizationSchedule($contract->contract_no);
-
-        return $amortizationTable;
     }
 
     public function refreshAmortizationSchedule($contract)

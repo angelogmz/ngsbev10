@@ -66,6 +66,8 @@ Route::group([
 
     Route::post('allocate-payments/{contract_no}', [PaymentAllocationController::class, 'allocatePayments']);
 
+    Route::get('payment-breakdown/{contract_no}', [PaymentAllocationController::class, 'getPaymentBreakdown']);
+
 
     //Gurantors
 
@@ -96,6 +98,4 @@ Route::group([
     Route::post('payments/add-uuids', [PaymentUuidController::class, 'addUuids']);
 
 
-
 });
-
