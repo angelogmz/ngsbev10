@@ -90,6 +90,180 @@ class PaymentAllocationController extends Controller
             ], 404);
         }
     }
+    function allocatePayment(
+        float $amount,
+        float &$updatedBalance,
+        float &$interestAllocation,
+        float &$principalAllocation,
+        float &$amortInterestAllocation,
+        float &$amortPrincipalAllocation,
+        int &$allocated
+    ): float {
+        // First handle the updated balance
+        if ($amount > 0) {
+            if ($updatedBalance > $amount) {
+                $updatedBalance -= $amount;
+            } elseif ($amount >= $updatedBalance) {
+                $updatedBalance = 0;
+                $allocated = 1;
+            }
+
+            // Allocate to different components in priority order
+
+            if ($amount >= $interestAllocation) {
+                $amount -= $interestAllocation;
+
+                if ($amount >= $principalAllocation) {
+                    $amount -= $principalAllocation;
+                } else {
+                    $principalAllocation = $amount;
+                    $amortPrincipalAllocation -= $amount;
+                    $amount = 0;
+                }
+            } else {
+                $interestAllocation = $amount;
+                $amortInterestAllocation -= $amount;
+                $amount = 0;
+                $principalAllocation = 0;
+            }
+        }
+
+        return $amount;
+    }
+
+    function processPaymentAllocations(
+        float &$excess,
+        float &$deductable,
+        float &$updatedBalance,
+        float &$interestAllocation,
+        float &$principalAllocation,
+        float &$amortInterestAllocation,
+        float &$amortPrincipalAllocation,
+        int &$allocated,
+        float &$carryOverExcess
+    ): void {
+        // Process excess payment
+        $excess = $this->allocatePayment(
+            $excess,
+            $updatedBalance,
+            $interestAllocation,
+            $principalAllocation,
+            $amortInterestAllocation,
+            $amortPrincipalAllocation,
+            $allocated
+        );
+
+        // Process deductible payment
+        $deductable = $this->allocatePayment(
+            $deductable,
+            $updatedBalance,
+            $interestAllocation,
+            $principalAllocation,
+            $amortInterestAllocation,
+            $amortPrincipalAllocation,
+            $allocated
+        );
+
+        // Handle remaining deductible
+        if ($deductable > 0) {
+            $excess += $deductable;
+            $carryOverExcess = $excess;
+            $allocated = 0;
+        }
+    }
+
+
+    function allocateLatePayment(
+        float $amount,
+        float &$updatedBalance,
+        float &$overDueInterest,
+        float &$overdueRent,
+        float &$interestAllocation,
+        float &$principalAllocation,
+        float &$amortInterestAllocation,
+        float &$amortPrincipalAllocation,
+        int &$allocated
+    ): float {
+        // First handle the updated balance
+        if ($amount > 0) {
+            if ($updatedBalance > $amount) {
+                $updatedBalance -= $amount;
+            } elseif ($amount >= $updatedBalance) {
+                $updatedBalance = 0;
+                $allocated = 1;
+            }
+
+            // Allocate to different components in priority order
+            if ($amount >= $overDueInterest) {
+                $amount -= $overDueInterest;
+
+                if ($amount >= $overdueRent) {
+                    $amount -= $overdueRent;
+                } else if ($amount < $overdueRent) {
+                    $overdueRent = $amount;
+                    $amortPrincipalAllocation -= $amount;
+                    $amount = 0;
+                    $interestAllocation = 0;
+                    $principalAllocation = 0;
+                }
+            } elseif ($amount < $overDueInterest) {
+                $overDueInterest = $amount;
+                $amortInterestAllocation -= $amount;
+                $amount = 0;
+                $overdueRent = 0;
+                $interestAllocation = 0;
+                $principalAllocation = 0;
+            }
+        }
+        return $amount;
+    }
+
+    function processLatePaymentAllocations(
+        float &$excess,
+        float &$deductable,
+        float &$updatedBalance,
+        float &$overDueInterest,
+        float &$overdueRent,
+        float &$interestAllocation,
+        float &$principalAllocation,
+        float &$amortInterestAllocation,
+        float &$amortPrincipalAllocation,
+        int &$allocated,
+        float &$carryOverExcess
+    ): void {
+        // Process excess payment
+        $excess = $this->allocateLatePayment(
+            $excess,
+            $updatedBalance,
+            $overDueInterest,
+            $overdueRent,
+            $interestAllocation,
+            $principalAllocation,
+            $amortInterestAllocation,
+            $amortPrincipalAllocation,
+            $allocated
+        );
+
+        // Process deductible payment
+        $deductable = $this->allocateLatePayment(
+            $deductable,
+            $updatedBalance,
+            $overDueInterest,
+            $overdueRent,
+            $interestAllocation,
+            $principalAllocation,
+            $amortInterestAllocation,
+            $amortPrincipalAllocation,
+            $allocated
+        );
+
+        // Handle remaining deductible
+        if ($deductable > 0) {
+            $excess += $deductable;
+            $carryOverExcess = $excess;
+            $allocated = 0;
+        }
+    }
 
     public function allocatePayments($contract_no){
         $allBreakdowns = PaymentBreakdown::where('contract_no', $contract_no)
@@ -229,63 +403,17 @@ class PaymentAllocationController extends Controller
                             $overDueInterest = 0;
                             $overdueRent = 0;
                             // Apply current payment
-                            if ($excess > 0) {
-                                if($excess < $updatedBalance){
-                                    $updatedBalance -= $excess;
-                                } else if($excess >= $updatedBalance){
-                                    $updatedBalance = 0;
-                                }
-                                if ($excess >= $interestAllocation) {
-                                    $excess -= $interestAllocation;
-                                }
-                                else if ($excess < $interestAllocation) {
-                                    $amortInterestAllocation -= $excess;
-                                    $interestAllocation -= $excess;
-                                    $excess = 0;
-                                }
-
-                                if ($excess >= $principalAllocation) {
-                                    $excess -= $principalAllocation;
-                                }
-                                else if ($excess < $principalAllocation) {
-                                    $amortPrincipalAllocation -= $excess;
-                                    $principalAllocation -= $excess;
-                                    $excess = 0;
-                                }
-                            }
-
-                            if ($deductable > 0) {
-                                if($updatedBalance >= $deductable){
-                                    $updatedBalance -= $deductable;
-                                } else if($updatedBalance < $deductable){
-                                    $updatedBalance = 0;
-                                }
-
-                                if ($deductable >= $interestAllocation) {
-                                    $deductable -= $interestAllocation;
-                                    $amortInterestAllocation = 0;
-                                }
-                                else if ($deductable < $interestAllocation) {
-                                    $interestAllocation = $deductable;
-                                    $amortInterestAllocation -= $deductable;
-                                    $deductable = 0;
-                                }
-
-                                if ($deductable >= $principalAllocation) {
-                                    $deductable -= $principalAllocation;
-                                    $amortPrincipalAllocation = 0;
-                                }
-                                else if ($deductable < $principalAllocation) {
-                                    $amortPrincipalAllocation -= $deductable;
-                                    $principalAllocation = $deductable;
-                                    $deductable = 0;
-                                }
-                            }
-
-                            if ($deductable > 0) {
-                                $excess += $deductable;
-                                $carryOverExcess = $excess;
-                            }
+                            $this->processPaymentAllocations(
+                                $excess,
+                                $deductable,
+                                $updatedBalance,
+                                $interestAllocation,
+                                $principalAllocation,
+                                $amortInterestAllocation,
+                                $amortPrincipalAllocation,
+                                $allocated,
+                                $carryOverExcess
+                            );
                         }
                         elseif($payment_date > $due_date){
 
@@ -314,123 +442,19 @@ class PaymentAllocationController extends Controller
                                 }
 
                                 // Apply current payment
-                                if ($excess > 0) {
-                                    if($updatedBalance >= $excess){
-                                        $updatedBalance = 0;
-                                    }
-                                    elseif($excess < $updatedBalance){
-                                        $updatedBalance -= $excess;
-                                    }
-
-                                    if ($excess >= $overDueInterest) {
-                                        $excess -= $overDueInterest;
-                                    }
-                                    elseif ($excess < $overDueInterest) {
-                                        //$amortInterestAllocation -= $excess;
-                                        $overDueInterest -= $excess;
-                                        $excess = 0;
-                                    }
-                                    if ($excess >= $overdueRent) {
-                                        if ($excess >= $interestAllocation) {
-                                            $interestAllocation = $excess;
-                                        } else {
-                                            $interestAllocation = 0;
-                                        }
-
-                                        $excess -= $overdueRent;
-                                    }
-                                    elseif ($excess < $overdueRent) {
-
-                                        if ($excess >= $principalAllocation) {
-                                            $principalAllocation = $excess;
-                                        } else {
-                                            $principalAllocation = 0;
-                                        }
-
-                                        $overdueRent -= $excess;
-                                        $excess = 0;
-                                    }
-                                }
-
-                                if ($deductable > 0) {
-
-                                    if($updatedBalance > $deductable){
-                                        $updatedBalance -= $deductable;
-                                    } elseif($deductable >= $updatedBalance){
-                                        $updatedBalance = 0;
-                                        $allocated = 1;
-                                    }
-
-                                    if($deductable >= $overDueInterest) {
-                                        $deductable -= $overDueInterest;
-
-                                        //echo 'deductable after overDueInterest' . $deductable . PHP_EOL;
-
-                                        if ($deductable >= $overdueRent) {
-                                            //echo 'deductable >= overdueRent' . PHP_EOL;
-
-                                            if ($deductable >= $interestAllocation) {
-
-                                                $carryoverPrin = $deductable;
-
-                                                $carryoverPrin -= $interestAllocation;
-
-                                                if ($carryoverPrin >= $principalAllocation) {
-                                                    $principalAllocation = $carryoverPrin;
-                                                } else {
-                                                    $principalAllocation = 0;
-                                                }
-
-                                            } else {
-                                                $interestAllocation = 0;
-                                                $principalAllocation = $deductable;
-                                            }
-
-                                            $deductable -= $overdueRent;
-                                            $overdueRent = 0;
-                                        }
-                                        elseif ($deductable < $overdueRent) {
-
-                                            $allocated = 1;
-
-                                            $overdueRent = $deductable;
-
-                                            //$amortInterestAllocation = $overdueRent;
-                                            if($deductable > $interestAllocation){
-                                                $amortInterestAllocation = 0;
-                                            }
-                                            else{
-                                                $amortInterestAllocation = $interestAllocation;
-                                                $amortInterestAllocation -= $deductable;
-                                            }
-
-                                            $deductable -= $interestAllocation;
-
-                                            if ($deductable > 0) {
-                                                if($deductable >= $principalAllocation) {
-                                                    $amortPrincipalAllocation = 0;
-                                                } else {
-                                                    $amortPrincipalAllocation = $principalAllocation;
-                                                    $principalAllocation = $deductable;
-                                                    $amortPrincipalAllocation -= $deductable;
-                                                }
-                                            }
-
-                                            $deductable = 0;
-                                        }
-                                    }
-                                    elseif ($deductable < $overDueInterest) {
-                                        $overDueInterest -= $deductable;
-                                        $allocated = 1;
-                                        $deductable = 0;
-                                    }
-                                }
-
-                                if ($deductable > 0) {
-                                    $excess += $deductable;
-                                    $carryOverExcess = $excess;
-                                    $allocated = 0;
-                                }
+                                $this->processLatePaymentAllocations(
+                                    $excess,
+                                    $deductable,
+                                    $updatedBalance,
+                                    $overDueInterest,
+                                    $overdueRent,
+                                    $interestAllocation,
+                                    $principalAllocation,
+                                    $amortInterestAllocation,
+                                    $amortPrincipalAllocation,
+                                    $allocated,
+                                    $carryOverExcess
+                                );
                             }
 
                         }
@@ -686,64 +710,19 @@ class PaymentAllocationController extends Controller
                     if ($payment_date <= $due_date) {
                         $overDueInterest = 0;
                         $overdueRent = 0;
-                        // Apply current payment
-                        if ($excess > 0) {
-                            if($excess < $updatedBalance){
-                                $updatedBalance -= $excess;
-                            } else if($excess >= $updatedBalance){
-                                $updatedBalance = 0;
-                            }
-                            if ($excess >= $interestAllocation) {
-                                $excess -= $interestAllocation;
-                            }
-                            else if ($excess < $interestAllocation) {
-                                $amortInterestAllocation -= $excess;
-                                $interestAllocation -= $excess;
-                                $excess = 0;
-                            }
 
-                            if ($excess >= $principalAllocation) {
-                                $excess -= $principalAllocation;
-                            }
-                            else if ($excess < $principalAllocation) {
-                                $amortPrincipalAllocation -= $excess;
-                                $principalAllocation -= $excess;
-                                $excess = 0;
-                            }
-                        }
+                        $this->processPaymentAllocations(
+                            $excess,
+                            $deductable,
+                            $updatedBalance,
+                            $interestAllocation,
+                            $principalAllocation,
+                            $amortInterestAllocation,
+                            $amortPrincipalAllocation,
+                            $allocated,
+                            $carryOverExcess
+                        );
 
-                        if ($deductable > 0) {
-                            if($updatedBalance >= $deductable){
-                                $updatedBalance -= $deductable;
-                            } else if($updatedBalance < $deductable){
-                                $updatedBalance = 0;
-                            }
-
-                            if ($deductable >= $interestAllocation) {
-                                $deductable -= $interestAllocation;
-                                $amortInterestAllocation = 0;
-                            }
-                            else if ($deductable < $interestAllocation) {
-                                $interestAllocation = $deductable;
-                                $amortInterestAllocation -= $deductable;
-                                $deductable = 0;
-                            }
-
-                            if ($deductable >= $principalAllocation) {
-                                $deductable -= $principalAllocation;
-                                $amortPrincipalAllocation = 0;
-                            }
-                            else if ($deductable < $principalAllocation) {
-                                $amortPrincipalAllocation -= $deductable;
-                                $principalAllocation = $deductable;
-                                $deductable = 0;
-                            }
-                        }
-
-                        if ($deductable > 0) {
-                            $excess += $deductable;
-                            $carryOverExcess = $excess;
-                        }
                     }
 
                     elseif($payment_date > $due_date){
@@ -751,7 +730,10 @@ class PaymentAllocationController extends Controller
                         $interestAllocation = 0;
                         $principalAllocation = 0;
 
-                        $prev_payment_date = Carbon::parse($prev_payment_date);
+                        echo 'payment_date : ' . $payment_date . PHP_EOL;
+
+                        //$prev_payment_date = Carbon::parse($prev_payment_date);
+                        $prev_payment_date = $prev_payment_date ? Carbon::parse($prev_payment_date) : $payment_date;
                         $currentTimestamp = Carbon::parse($payment_date)
                         ->hour(0)
                         ->minute(0)
@@ -761,74 +743,122 @@ class PaymentAllocationController extends Controller
                                 $DiffV = ($currentTimestamp)->diffInDays($due_date);
                             }
                             elseif($prev_payment_date > $due_date){
-                                $DiffV = ($currentTimestamp)->diffInDays($prev_payment_date);
+                                $DiffV = ($payment_date)->diffInDays($due_date);
                             }
+
                             $overdueRent = round($updatedBalance, 2);
                             $overDueInterest = $DiffV * $contractDefIntRate * $overdueRent / 100;
                             $overDueInterest = round($overDueInterest, 2);
                             $updatedBalance += $overDueInterest;
 
+                            echo 'updatedBalance : ' . $updatedBalance . PHP_EOL;
+                            echo '$deductable : ' . $deductable . PHP_EOL;
+
+
                             if($deductable > $updatedBalance){
                                 $allocated = 1;
                             }
 
-                            // Apply current payment
-                            if ($excess > 0) {
-                                if($updatedBalance >= $excess){
-                                    $updatedBalance = 0;
-                                }
-                                elseif($excess < $updatedBalance){
-                                    $updatedBalance -= $excess;
-                                }
+                            $this->processLatePaymentAllocations(
+                                $excess,
+                                $deductable,
+                                $updatedBalance,
+                                $overDueInterest,
+                                $overdueRent,
+                                $interestAllocation,
+                                $principalAllocation,
+                                $amortInterestAllocation,
+                                $amortPrincipalAllocation,
+                                $allocated,
+                                $carryOverExcess
+                            );
 
-                                if ($excess >= $overDueInterest) {
-                                    $excess -= $overDueInterest;
-                                }
-                                elseif ($excess < $overDueInterest) {
-                                    //$amortInterestAllocation -= $excess;
-                                    $overDueInterest -= $excess;
-                                    $excess = 0;
-                                }
-                                if ($excess >= $overdueRent) {
-                                    $excess -= $overdueRent;
-                                }
-                                elseif ($excess < $overdueRent) {
-                                    //$amortPrincipalAllocation -= $excess;
-                                    $overdueRent -= $excess;
-                                    $excess = 0;
-                                }
-                            }
+                            // // Apply current payment
+                            // if ($excess > 0) {
 
-                            if ($deductable > 0) {
+                            //     if($updatedBalance > $excess){
+                            //         $updatedBalance -= $excess;
+                            //     } elseif($excess >= $updatedBalance){
+                            //         $updatedBalance = 0;
+                            //         $allocated = 1;
+                            //     }
 
-                                if($updatedBalance > $deductable){
-                                    $updatedBalance -= $deductable;
-                                } elseif($deductable >= $updatedBalance){
-                                    $updatedBalance = 0;
-                                    $allocated = 1;
-                                }
+                            //     if($excess >= $overDueInterest) {
+                            //         $excess -= $overDueInterest;
+                            //         if ($excess >= $overdueRent) {
+                            //             $excess -= $overdueRent;
+                            //             if ($excess >= $interestAllocation) {
+                            //                 $excess -= $interestAllocation;
+                            //                 if($excess >= $principalAllocation) {
+                            //                     $excess -= $principalAllocation;
+                            //                 } else {
+                            //                     $principalAllocation -= $excess;
+                            //                 }
+                            //             } else {
+                            //                 $principalAllocation -= $excess;
+                            //             }
 
-                                if($deductable >= $overDueInterest) {
-                                    $deductable -= $overDueInterest;
-                                    if ($deductable >= $overdueRent) {
-                                        $deductable -= $overdueRent;
-                                    }
-                                    elseif ($deductable < $overdueRent) {
-                                        $overdueRent -= $deductable;
-                                        $deductable = 0;
-                                    }
-                                }
-                                elseif ($deductable < $overDueInterest) {
-                                    $overDueInterest -= $deductable;
-                                    $deductable = 0;
-                                }
-                            }
+                            //         }
+                            //         elseif ($excess < $overdueRent) {
+                            //             $overdueRent -= $excess;
+                            //             $excess = 0;
+                            //             $interestAllocation = 0;
+                            //             $principalAllocation = 0;
+                            //         }
+                            //     }   else if ($excess < $overDueInterest) {
+                            //         $overDueInterest -= $excess;
+                            //         $excess = 0;
+                            //         $overdueRent = 0;
+                            //         $interestAllocation = 0;
+                            //         $principalAllocation = 0;
+                            //     }
+                            // }
 
-                            if ($deductable > 0) {
-                                $excess += $deductable;
-                                $carryOverExcess = $excess;
-                                $allocated = 0;
-                            }
+                            // if ($deductable > 0) {
+
+                            //     if($updatedBalance > $deductable){
+                            //         $updatedBalance -= $deductable;
+                            //     } elseif($deductable >= $updatedBalance){
+                            //         $updatedBalance = 0;
+                            //         $allocated = 1;
+                            //     }
+
+                            //     if($deductable >= $overDueInterest) {
+                            //         $deductable -= $overDueInterest;
+                            //         if ($deductable >= $overdueRent) {
+                            //             $deductable -= $overdueRent;
+                            //             if ($deductable >= $interestAllocation) {
+                            //                 $deductable -= $interestAllocation;
+                            //                 if($deductable >= $principalAllocation) {
+                            //                     $deductable -= $principalAllocation;
+                            //                 } else {
+                            //                     $principalAllocation -= $deductable;
+                            //                 }
+                            //             } else {
+                            //                 $principalAllocation -= $deductable;
+                            //             }
+
+                            //         }
+                            //         elseif ($deductable < $overdueRent) {
+                            //             $overdueRent -= $deductable;
+                            //             $deductable = 0;
+                            //             $interestAllocation = 0;
+                            //             $principalAllocation = 0;
+                            //         }
+                            //     }   else if ($deductable < $overDueInterest) {
+                            //         $overDueInterest -= $deductable;
+                            //         $deductable = 0;
+                            //         $overdueRent = 0;
+                            //         $interestAllocation = 0;
+                            //         $principalAllocation = 0;
+                            //     }
+                            // }
+
+                            // if ($deductable > 0) {
+                            //     $excess += $deductable;
+                            //     $carryOverExcess = $excess;
+                            //     $allocated = 0;
+                            // }
                         }
 
                     }
