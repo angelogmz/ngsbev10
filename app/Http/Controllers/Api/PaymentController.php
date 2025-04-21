@@ -101,18 +101,12 @@ class PaymentController extends Controller
 
             if($payment){
                 $contractId = DB::table('contracts')->where('contract_no', $request->contract_no)->first();
-                $contractTotalP = $contractId->total_payment;
-                $upNewTPaidVal = $contractTotalP - $request->payment_amount;
 
                 if($contractId){
 
                    $contractFind = Contract::find($contractId->id);
 
                     if($contractFind){
-                        $contractFind->update([
-                            'total_payment' => $upNewTPaidVal,
-                        ]);
-
                         return response()->json([
                             'status' => 200,
                             'pymnt_id' => $payment->pymnt_id,
@@ -123,7 +117,7 @@ class PaymentController extends Controller
                     else{
                         return response()->json([
                             'status' => 500,
-                            'message' => 'Something went wrong'
+                            'message' => 'Could not find the contract'
                         ], 500);
                     }
                 }
