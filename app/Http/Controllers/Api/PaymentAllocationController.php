@@ -694,6 +694,8 @@ class PaymentAllocationController extends Controller
                         $overDueInterest = 0;
                         $overdueRent = 0;
 
+                        echo 'early' . PHP_EOL;
+
                         $this->processPaymentAllocations(
                             $excess,
                             $deductable,
@@ -710,6 +712,8 @@ class PaymentAllocationController extends Controller
 
                     elseif($payment_date > $due_date){
 
+                        echo 'late' . PHP_EOL;
+
                         $interestAllocation = 0;
                         $principalAllocation = 0;
 
@@ -724,8 +728,11 @@ class PaymentAllocationController extends Controller
                                 $DiffV = ($currentTimestamp)->diffInDays($due_date);
                             }
                             elseif($prev_payment_date > $due_date){
-                                $DiffV = ($payment_date)->diffInDays($due_date);
+                                $DiffV = ($payment_date)->diffInDays($prev_payment_date);
                             }
+
+                            echo  PHP_EOL . $currentTimestamp . ' - $prev_payment_date -' . $prev_payment_date . ' $DiffV ' . $DiffV . PHP_EOL ;
+                            echo PHP_EOL;
 
                             $overdueRent = round($updatedBalance, 2);
                             $overDueInterest = $DiffV * $contractDefIntRate * $overdueRent / 100;
@@ -779,6 +786,8 @@ class PaymentAllocationController extends Controller
                     );
 
 
+                    echo $updatedBalance . PHP_EOL;
+
                     $this->updateAmortization(
                         $contract_no,
                         $due_date,
@@ -797,6 +806,7 @@ class PaymentAllocationController extends Controller
                     $break_principal = 0;
                     $break_future_rent = 0;
                     $i = 1;
+
 
                     if($carryOverExcess > 0){
                         while ($carryOverExcess > 0) {
