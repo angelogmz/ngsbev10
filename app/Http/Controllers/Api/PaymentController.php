@@ -111,6 +111,7 @@ class PaymentController extends Controller
                             'status' => 200,
                             'pymnt_id' => $payment->pymnt_id,
                             'receipt_id' => $payment->receipt_id,
+                            'payment_amount' => $payment->payment_amount,
                             'message' => 'Payment added succesfully!'
                         ], 200);
                     }

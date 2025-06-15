@@ -4,6 +4,7 @@ namespace App\Services;
 use App\Models\PaymentBreakdown;
 use App\Models\Contract;
 use App\Models\Payment;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class PaymentBreakdownService
@@ -110,7 +111,7 @@ class PaymentBreakdownService
                     ],
                     array_merge([
                         'payment_amount' => $payment->payment_amount,
-                        'payment_date' => $payment->payment_date
+                        'payment_date' => Carbon::parse($payment->payment_date)->format('Y-m-d')
                     ], $zeroFields)
                 );
 

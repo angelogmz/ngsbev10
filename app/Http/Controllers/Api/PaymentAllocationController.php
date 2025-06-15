@@ -15,6 +15,7 @@ use App\Services\PaymentBreakdownService;
 use DateTime;
 use Carbon\Carbon;
 use PhpParser\Node\Stmt\Echo_;
+use PHPUnit\Event\Runtime\PHP;
 
 class PaymentAllocationController extends Controller
 {
@@ -41,7 +42,8 @@ class PaymentAllocationController extends Controller
                 'status' => 200,
                 'contract' => $contractDetails, // Entire contract object
                 'contract_no' => $contractDetails->contract_no, // Entire contract object
-                'def_int_rate' => $contractDetails->def_int_rate
+                'def_int_rate' => $contractDetails->def_int_rate,
+                'execution_date' => $contractDetails->loan_execution_date,
             ], 200);
 
         } else {
@@ -90,927 +92,6 @@ class PaymentAllocationController extends Controller
             ], 404);
         }
     }
-    function allocatePayment(
-        float $amount,
-        float &$updatedBalance,
-        float &$interestAllocation,
-        float &$principalAllocation,
-        float &$amortInterestAllocation,
-        float &$amortPrincipalAllocation,
-        int &$allocated
-    ): float {
-        // First handle the updated balance
-        if ($amount > 0) {
-            if ($updatedBalance > $amount) {
-                $updatedBalance -= $amount;
-            } elseif ($amount >= $updatedBalance) {
-                $updatedBalance = 0;
-                $allocated = 1;
-            }
-
-            // Allocate to different components in priority order
-
-            if ($amount >= $interestAllocation) {
-                $amount -= $interestAllocation;
-
-                if ($amount >= $principalAllocation) {
-                    $amount -= $principalAllocation;
-                } else {
-                    $principalAllocation = $amount;
-                    $amortPrincipalAllocation -= $amount;
-                    $amount = 0;
-                }
-            } else {
-                $interestAllocation = $amount;
-                $amortInterestAllocation -= $amount;
-                $amount = 0;
-                $principalAllocation = 0;
-            }
-        }
-
-        return $amount;
-    }
-
-    function processPaymentAllocations(
-        float &$excess,
-        float &$deductable,
-        float &$updatedBalance,
-        float &$interestAllocation,
-        float &$principalAllocation,
-        float &$amortInterestAllocation,
-        float &$amortPrincipalAllocation,
-        int &$allocated,
-        float &$carryOverExcess
-    ): void {
-        // Process excess payment
-        $excess = $this->allocatePayment(
-            $excess,
-            $updatedBalance,
-            $interestAllocation,
-            $principalAllocation,
-            $amortInterestAllocation,
-            $amortPrincipalAllocation,
-            $allocated
-        );
-
-        // Process deductible payment
-        $deductable = $this->allocatePayment(
-            $deductable,
-            $updatedBalance,
-            $interestAllocation,
-            $principalAllocation,
-            $amortInterestAllocation,
-            $amortPrincipalAllocation,
-            $allocated
-        );
-
-        // Handle remaining deductible
-        if ($deductable > 0) {
-            $excess += $deductable;
-            $carryOverExcess = $excess;
-            $allocated = 0;
-        }
-    }
-
-
-    function allocateLatePayment(
-        float $amount,
-        float &$updatedBalance,
-        float &$overDueInterest,
-        float &$overdueRent,
-        float &$interestAllocation,
-        float &$principalAllocation,
-        float &$amortInterestAllocation,
-        float &$amortPrincipalAllocation,
-        int &$allocated
-    ): float {
-        // First handle the updated balance
-        if ($amount > 0) {
-            if ($updatedBalance > $amount) {
-                $updatedBalance -= $amount;
-            } elseif ($amount >= $updatedBalance) {
-                $updatedBalance = 0;
-                $allocated = 1;
-            }
-
-            // Allocate to different components in priority order
-            if ($amount >= $overDueInterest) {
-                $amount -= $overDueInterest;
-
-                if ($amount >= $overdueRent) {
-                    $amount -= $overdueRent;
-                } else if ($amount < $overdueRent) {
-                    $overdueRent = $amount;
-                    $amortPrincipalAllocation -= $amount;
-                    $amount = 0;
-                    $interestAllocation = 0;
-                    $principalAllocation = 0;
-                }
-            } elseif ($amount < $overDueInterest) {
-                $overDueInterest = $amount;
-                $amortInterestAllocation -= $amount;
-                $amount = 0;
-                $overdueRent = 0;
-                $interestAllocation = 0;
-                $principalAllocation = 0;
-            }
-        }
-        return $amount;
-    }
-
-    function processLatePaymentAllocations(
-        float &$excess,
-        float &$deductable,
-        float &$updatedBalance,
-        float &$overDueInterest,
-        float &$overdueRent,
-        float &$interestAllocation,
-        float &$principalAllocation,
-        float &$amortInterestAllocation,
-        float &$amortPrincipalAllocation,
-        int &$allocated,
-        float &$carryOverExcess
-    ): void {
-
-        // Process excess payment
-        $excess = $this->allocateLatePayment(
-            $excess,
-            $updatedBalance,
-            $overDueInterest,
-            $overdueRent,
-            $interestAllocation,
-            $principalAllocation,
-            $amortInterestAllocation,
-            $amortPrincipalAllocation,
-            $allocated
-        );
-
-        // Process deductible payment
-        $deductable = $this->allocateLatePayment(
-            $deductable,
-            $updatedBalance,
-            $overDueInterest,
-            $overdueRent,
-            $interestAllocation,
-            $principalAllocation,
-            $amortInterestAllocation,
-            $amortPrincipalAllocation,
-            $allocated
-        );
-
-        // Handle remaining deductible
-        if ($deductable > 0) {
-            $excess += $deductable;
-            $carryOverExcess = $excess;
-            $allocated = 0;
-        }
-    }
-
-    public function allocatePayments($contract_no){
-
-        PaymentBreakdown::truncate();
-        MasterAmortization::truncate();
-
-
-        $allBreakdowns = PaymentBreakdown::where('contract_no', $contract_no)
-        ->get();
-
-        $contractDetails = $this->getContractDetails($contract_no);
-
-        // Decode the JSON content
-        $data = $contractDetails->getData();
-
-        // Access the def_int_rate value
-        $contractDefIntRate = $data->def_int_rate;
-
-        if($allBreakdowns->isNotEmpty()){
-            $lastBreakdown = PaymentBreakdown::where('contract_no', $contract_no)
-            ->orderBy('payment_date', 'desc')  // Or use payment_date if more appropriate
-            ->first([
-                'pymnt_id',
-                'payment_date',
-                'future_rent',
-                'allocated'
-            ]);
-
-            if ($lastBreakdown) {
-                $lastPayment = [
-                    'pymnt_id' => $lastBreakdown->pymnt_id,
-                    'payment_date' => $lastBreakdown->payment_date,
-                    'future_rent' => $lastBreakdown->future_rent,
-                    'allocated' => $lastBreakdown->allocated,
-                    'excess' => $lastBreakdown->excess
-                ];
-
-                $filteredMissingBreakdowns = $this->paymentBreakdownService->filterMissingBreakdowns($contract_no);
-
-                foreach ($filteredMissingBreakdowns as &$paymntBreakDown){
-
-                    $excess = 0;
-                    $carryOverExcess = 0;
-                    $updatedBalance = 0;
-                    $varAmorComplete = 0;
-                    $prev_payment_date = $lastPayment['payment_date'];
-                    $prev_payment_id = $lastPayment['pymnt_id'];
-                    $prev_allocated = $lastPayment['allocated'];
-                    $allocated = 0;
-
-                    if($prev_allocated == 0){
-                        $carryOverExcess = $lastPayment['future_rent'] + $lastPayment['excess'];
-                    }
-                    else{
-                        $carryOverExcess = 0;
-                    }
-
-                    if($carryOverExcess > 0 && $prev_payment_id){
-                        $prevBreakSchedule = PaymentBreakdown::where('pymnt_id', $prev_payment_id)
-                        ->where('contract_no', $contract_no)
-                        ->where('allocated', 0)
-                        ->first();
-                        if($prevBreakSchedule && $prev_allocated == 0){
-                            $prevBreakSchedule->update([
-                                'allocated' => 1,
-                            ]);
-                        }
-                    }
-
-                    // Check if there are no incomplete amortizations left
-                    $allCompleted = !MasterAmortization::where('contract_no', $contract_no)
-                    ->where('completed', false)
-                    ->exists();
-
-                    if ($allCompleted) {
-
-                        //$totalPayment = $carryOverExcess + $paymntBreakDown['payment_amount'];
-
-                        // $recPrevBreakSchedule = PaymentBreakdown::where('contract_no', $contract_no)
-                        // ->where('allocated', 0)
-                        // ->first();
-
-                        $totalPayment = $carryOverExcess;
-
-                        if (isset($paymntBreakDown['pymnt_id'],$paymntBreakDown['payment_date'], $totalPayment, $contract_no)) {
-                            $updateBreak = PaymentBreakdown::create([
-                                'contract_no' => $contract_no,
-                                'pymnt_id' => $paymntBreakDown['pymnt_id'],
-                                'payment_amount' => $paymntBreakDown['payment_amount'],
-                                'excess' => $paymntBreakDown['payment_amount'],
-                                'payment_date' => $paymntBreakDown['payment_date'],
-                            ]);
-                        } else {
-                            // Handle missing data (e.g., log an error or throw an exception)
-                            throw new \Exception("Missing required payment breakdown data.");
-                        }
-
-
-                    // All amortizations for this contract are completed
-                        return response()->json([
-                            'status' => 200,
-                            'message' => 'All amortizations are completed',
-                        ], 200);
-                    } else {
-                    // There are still incomplete amortizations
-                        // Proceed with normal logic
-                        $amortizationSchedule = MasterAmortization::where('contract_no', $contract_no)
-                        ->where('completed', false)
-                        ->first();
-
-
-
-                        $deductable = $paymntBreakDown['payment_amount'];
-                        $pymnt_id = $paymntBreakDown['pymnt_id'];
-                        $payment_date = Carbon::parse($paymntBreakDown['payment_date']);
-                        $due_date = Carbon::parse($amortizationSchedule['due_date']);
-
-
-
-                        $excess = $carryOverExcess;
-                        $carryOverExcess = 0;
-
-
-                        $interestAllocation = $amortizationSchedule['balance_interest'];
-                        $principalAllocation = $amortizationSchedule['balance_principal'];
-
-                        $overDueInterest = 0;
-                        $overdueRent = 0;
-                        $breakOverdueRent = null;
-
-                        $amortInterestAllocation = $amortizationSchedule['balance_interest'];
-                        $amortPrincipalAllocation = $amortizationSchedule['balance_principal'];
-
-                        $updatedBalance = $amortizationSchedule['balance_payment'];
-                        //$excess = $this->$excess;
-                        if($deductable < $updatedBalance){
-                            $allocated = 1;
-                        }
-
-                        if ($payment_date <= $due_date) {
-
-                            $overDueInterest = 0;
-                            $overdueRent = 0;
-                            // Apply current payment
-                            $this->processPaymentAllocations(
-                                $excess,
-                                $deductable,
-                                $updatedBalance,
-                                $interestAllocation,
-                                $principalAllocation,
-                                $amortInterestAllocation,
-                                $amortPrincipalAllocation,
-                                $allocated,
-                                $carryOverExcess
-                            );
-                        }
-                        elseif($payment_date > $due_date){
-
-                            // $interestAllocation = 0;
-                            // $principalAllocation = 0;
-
-                            $prev_payment_date = Carbon::parse($prev_payment_date);
-                            $currentTimestamp = Carbon::parse($payment_date)
-                            ->hour(0)
-                            ->minute(0)
-                            ->second(0);
-                            if($prev_payment_date){
-                                if($prev_payment_date <= $due_date){
-                                    $DiffV = ($currentTimestamp)->diffInDays($due_date);
-                                }
-                                elseif($prev_payment_date > $due_date){
-                                    $DiffV = ($currentTimestamp)->diffInDays($prev_payment_date);
-                                }
-                                $overdueRent = round($updatedBalance, 2);
-                                $overDueInterest = $DiffV * $contractDefIntRate * $overdueRent / 100;
-                                $overDueInterest = round($overDueInterest, 2);
-                                $updatedBalance += $overDueInterest;
-
-                                if($deductable > $updatedBalance){
-                                    $allocated = 1;
-                                }
-
-                                // Apply current payment
-                                $this->processLatePaymentAllocations(
-                                    $excess,
-                                    $deductable,
-                                    $updatedBalance,
-                                    $overDueInterest,
-                                    $overdueRent,
-                                    $interestAllocation,
-                                    $principalAllocation,
-                                    $amortInterestAllocation,
-                                    $amortPrincipalAllocation,
-                                    $allocated,
-                                    $carryOverExcess
-                                );
-                            }
-
-                        }
-
-                        if($updatedBalance <= 0){
-                            $varAmorComplete = 1;
-                        }
-                        else{
-                            $varAmorComplete = 0;
-                        }
-
-                        if($updatedBalance == 0 && $deductable == 0){
-                            if(!($carryOverExcess > 0)){
-                                $allocated = 1;
-                            }
-                        };
-
-                        if($excess > 0){
-                            $allocated = 1;
-                        }
-
-                        $updateBreak = $this->updateBreakdown(
-                            $contract_no,
-                            $pymnt_id,
-                            $overDueInterest,
-                            $overdueRent,
-                            $interestAllocation ,
-                            $principalAllocation,
-                            $excess,
-                            $allocated,
-                            $paymntBreakDown['payment_amount'],
-                            $paymntBreakDown['payment_date']
-                        );
-
-                        $this->updateAmortization(
-                            $contract_no,
-                            $due_date,
-                            $updatedBalance,
-                            $amortInterestAllocation,
-                            $amortPrincipalAllocation,
-                            $varAmorComplete
-                        );
-
-                        $amort_future_interest = 0;
-                        $amort_future_principal = 0;
-
-                        if($excess > 0){
-                            $carryOverExcess = $excess;
-                            while ($carryOverExcess > 0) {
-
-                                $amortInterestAllocation = 0;
-                                $amortPrincipalAllocation = 0;
-
-                                $nextAmortization = MasterAmortization::where('contract_no', $contract_no)
-                                    ->where('completed', false)
-                                    ->where('due_date', '>', $due_date)
-                                    ->orderBy('due_date')
-                                    ->first();
-
-                                if (!$nextAmortization) {
-                                    // No more amortizations to apply excess to
-                                    $paymntBreakDown['future_rent'] = $carryOverExcess; // Store remaining excess
-                                    break;
-                                }
-
-                                $nxtAmortInt = $nextAmortization->balance_interest;
-                                $nxtAmortPrincipal = $nextAmortization->balance_principal;
-                                $nxtAmortBalance = $nextAmortization->balance_payment;
-                                $nxtAmortdue_date = $nextAmortization->due_date;
-
-                                if($carryOverExcess >= $nxtAmortBalance){
-                                    $break_interest = $nxtAmortInt;
-                                    $carryOverExcess -= $nxtAmortInt;
-                                    $nxtAmortInt = 0;
-                                    if($carryOverExcess >= $nxtAmortPrincipal){
-                                        $break_principal = $nxtAmortPrincipal;
-                                        $carryOverExcess -= $nxtAmortPrincipal;
-                                        $nxtAmortPrincipal = 0;
-                                    }
-                                    else{
-                                        $break_principal = $carryOverExcess;
-                                        $nxtAmortPrincipal -= $carryOverExcess;
-                                        $carryOverExcess = 0;
-                                    }
-                                }
-                                elseif($carryOverExcess < $nxtAmortBalance){
-                                    if($carryOverExcess >= $nxtAmortInt){
-                                        $break_interest = $nxtAmortInt;
-                                        $carryOverExcess -= $nxtAmortInt;
-                                        $nxtAmortInt = 0;
-                                        if($carryOverExcess >= $nxtAmortPrincipal){
-                                            $break_principal = $nxtAmortPrincipal;
-                                            $carryOverExcess -= $nxtAmortPrincipal;
-                                            $nxtAmortPrincipal = 0;
-                                        }
-                                        else{
-                                            $break_principal = $carryOverExcess;
-                                            $nxtAmortPrincipal -= $carryOverExcess;
-                                            $carryOverExcess = 0;
-                                        }
-                                    }
-                                    else{
-                                        $break_interest = $carryOverExcess;
-                                        $nxtAmortInt -= $carryOverExcess;
-                                        $carryOverExcess = 0;
-                                    }
-                                    $carryOverExcess = 0;
-                                }
-
-                                $nxtAmortBalance = $nxtAmortInt + $nxtAmortPrincipal;
-
-                                if($carryOverExcess > 0){
-                                    $break_future_rent = $carryOverExcess;
-                                }
-
-                                if($nxtAmortBalance <= 0){
-                                    $varAmorComplete = 1;
-                                }
-                                else{
-                                    $varAmorComplete = 0;
-                                }
-
-                                $this->updateBreakdownFuture(
-                                    $pymnt_id,
-                                    $break_interest,
-                                    $break_principal,
-                                    $break_future_rent
-                                );
-
-                                $this->updateAmortization(
-                                    $contract_no,
-                                    $nxtAmortdue_date,
-                                    $nxtAmortBalance,
-                                    $amortInterestAllocation,
-                                    $amortPrincipalAllocation,
-                                    $varAmorComplete
-                                );
-
-                            }
-                        }
-
-
-
-                        $prev_payment_date = $payment_date;
-                        $prev_payment_id = $pymnt_id;
-                    }
-
-                }
-
-
-
-                // Use $lastPayment as needed
-                //return $lastPayment;
-            } else {
-                // No records found
-                return null;
-            }
-
-            return response()->json([
-                'status' => 200
-            ], 200);
-
-        }
-        else{
-            $paymntBreakDownSchedule = $this->paymentBreakdownService->refreshPaymentBreakdown($contract_no);
-            if($paymntBreakDownSchedule){
-
-                $this->amortizationService->getOrGenerateAmortizationSchedule($contract_no);
-
-                $allPaymentsProcessed = false;
-                $carryOverExcess = 0;
-                $excess = 0;
-                $updatedBalance = 0;
-                $varAmorComplete = 0;
-                $prev_payment_date = '';
-                $prev_payment_id = '';
-
-                foreach ($paymntBreakDownSchedule as &$paymntBreakDown) {
-                    $allocated = 0;
-
-                    if($carryOverExcess > 0 && $prev_payment_id){
-                        $prevBreakSchedule = PaymentBreakdown::where('pymnt_id', $prev_payment_id)
-                        ->where('contract_no', $contract_no)
-                        ->first();
-                        if($prevBreakSchedule){
-                            $prevBreakSchedule->update([
-                                'allocated' => 1,
-                            ]);
-                        }
-                    }
-
-                    $excess = $carryOverExcess;
-                    $carryOverExcess = 0;
-
-                    $amortizationSchedule = MasterAmortization::where('contract_no', $contract_no)
-                    ->where('completed', false)
-                    ->first();
-
-                    $contractID = $contract_no;
-
-                    $deductable = $paymntBreakDown['payment_amount'];
-                    $pymnt_id = $paymntBreakDown['pymnt_id'];
-                    $payment_date = Carbon::parse($paymntBreakDown['payment_date']);
-                    $due_date = Carbon::parse($amortizationSchedule->due_date);
-
-                    //echo $due_date;
-
-
-                    $interestAllocation = $amortizationSchedule->balance_interest;
-                    $principalAllocation = $amortizationSchedule->balance_principal;
-
-
-
-                    $overDueInterest = 0;
-                    $overdueRent = 0;
-
-                    $amortInterestAllocation = $amortizationSchedule->balance_interest;
-                    $amortPrincipalAllocation = $amortizationSchedule->balance_principal;
-
-                    $updatedBalance = $amortizationSchedule->balance_payment;
-
-
-                    //echo $updatedBalance;
-                    //$excess = $this->$excess;
-                    if($deductable > $updatedBalance){
-                        $allocated = 1;
-                    }
-
-
-                    if ($payment_date <= $due_date) {
-                        $overDueInterest = 0;
-                        $overdueRent = 0;
-
-                        echo 'early' . PHP_EOL;
-
-                        $this->processPaymentAllocations(
-                            $excess,
-                            $deductable,
-                            $updatedBalance,
-                            $interestAllocation,
-                            $principalAllocation,
-                            $amortInterestAllocation,
-                            $amortPrincipalAllocation,
-                            $allocated,
-                            $carryOverExcess
-                        );
-
-                    }
-
-                    elseif($payment_date > $due_date){
-
-                        echo 'late' . PHP_EOL;
-
-                        $interestAllocation = 0;
-                        $principalAllocation = 0;
-
-                        //$prev_payment_date = Carbon::parse($prev_payment_date);
-                        $prev_payment_date = $prev_payment_date ? Carbon::parse($prev_payment_date) : $payment_date;
-                        $currentTimestamp = Carbon::parse($payment_date)
-                        ->hour(0)
-                        ->minute(0)
-                        ->second(0);
-                        if($prev_payment_date){
-                            if($prev_payment_date <= $due_date){
-                                $DiffV = ($currentTimestamp)->diffInDays($due_date);
-                            }
-                            elseif($prev_payment_date > $due_date){
-                                $DiffV = ($payment_date)->diffInDays($prev_payment_date);
-                            }
-
-                            echo  PHP_EOL . $currentTimestamp . ' - $prev_payment_date -' . $prev_payment_date . ' $DiffV ' . $DiffV . PHP_EOL ;
-                            echo PHP_EOL;
-
-                            $overdueRent = round($updatedBalance, 2);
-                            $overDueInterest = $DiffV * $contractDefIntRate * $overdueRent / 100;
-                            $overDueInterest = round($overDueInterest, 2);
-                            $updatedBalance += $overDueInterest;
-
-
-
-                            if($deductable > $updatedBalance){
-                                $allocated = 1;
-                            }
-
-                            $this->processLatePaymentAllocations(
-                                $excess,
-                                $deductable,
-                                $updatedBalance,
-                                $overDueInterest,
-                                $overdueRent,
-                                $interestAllocation,
-                                $principalAllocation,
-                                $amortInterestAllocation,
-                                $amortPrincipalAllocation,
-                                $allocated,
-                                $carryOverExcess
-                            );
-                        }
-
-                    }
-
-                    if($updatedBalance <= 0){
-                        $varAmorComplete = 1;
-                    }
-                    else{
-                        $varAmorComplete = 0;
-                    }
-
-                    $allocated = 1;
-
-
-                    $updateBreak = $this->updateBreakdown(
-                        $contract_no,
-                        $pymnt_id,
-                        $overDueInterest,
-                        $overdueRent,
-                        $interestAllocation ,
-                        $principalAllocation,
-                        $excess,
-                        $allocated,
-                        $paymntBreakDown['payment_amount'],
-                        $paymntBreakDown['payment_date']
-                    );
-
-
-                    echo $updatedBalance . PHP_EOL;
-
-                    $this->updateAmortization(
-                        $contract_no,
-                        $due_date,
-                        $updatedBalance,
-                        $amortInterestAllocation,
-                        $amortPrincipalAllocation,
-                        $varAmorComplete
-                    );
-
-                    $prev_payment_date = $payment_date;
-                    $prev_payment_id = $pymnt_id;
-
-                    $amort_future_interest = 0;
-                    $amort_future_principal = 0;
-                    $break_interest = 0;
-                    $break_principal = 0;
-                    $break_future_rent = 0;
-                    $i = 1;
-
-
-                    if($carryOverExcess > 0){
-                        while ($carryOverExcess > 0) {
-
-                            $amortInterestAllocation = 0;
-                            $amortPrincipalAllocation = 0;
-
-                            $nextAmortization = MasterAmortization::where('contract_no', $contract_no)
-                                ->where('completed', false)
-                                ->where('due_date', '>', $due_date)
-                                ->orderBy('due_date')
-                                ->first();
-
-                            if (!$nextAmortization) {
-                                // No more amortizations to apply excess to
-                                $paymntBreakDown['future_rent'] = $carryOverExcess; // Store remaining excess
-                                break;
-                            }
-
-                            $nxtAmortInt = $nextAmortization->balance_interest;
-                            $nxtAmortPrincipal = $nextAmortization->balance_principal;
-                            $nxtAmortBalance = $nextAmortization->balance_payment;
-                            $nxtAmortdue_date = $nextAmortization->due_date;
-
-                            if($carryOverExcess >= $nxtAmortBalance){
-                                $break_interest = $nxtAmortInt;
-                                $carryOverExcess -= $nxtAmortInt;
-                                $nxtAmortInt = 0;
-                                if($carryOverExcess >= $nxtAmortPrincipal){
-                                    $break_principal = $nxtAmortPrincipal;
-                                    $carryOverExcess -= $nxtAmortPrincipal;
-                                    $nxtAmortPrincipal = 0;
-                                }
-                                else{
-                                    $break_principal = $carryOverExcess;
-                                    $nxtAmortPrincipal -= $carryOverExcess;
-                                    $carryOverExcess = 0;
-                                }
-                            }
-                            elseif($carryOverExcess < $nxtAmortBalance){
-                                if($carryOverExcess >= $nxtAmortInt){
-                                    $break_interest = $nxtAmortInt;
-                                    $carryOverExcess -= $nxtAmortInt;
-                                    $nxtAmortInt = 0;
-                                    if($carryOverExcess >= $nxtAmortPrincipal){
-                                        $break_principal = $nxtAmortPrincipal;
-                                        $carryOverExcess -= $nxtAmortPrincipal;
-                                        $nxtAmortPrincipal = 0;
-                                    }
-                                    else{
-                                        $break_principal = $carryOverExcess;
-                                        $nxtAmortPrincipal -= $carryOverExcess;
-                                        $carryOverExcess = 0;
-                                    }
-                                }
-                                else{
-                                    $break_interest = $carryOverExcess;
-                                    $nxtAmortInt -= $carryOverExcess;
-                                    $carryOverExcess = 0;
-                                }
-                                $carryOverExcess = 0;
-                            }
-
-                            $nxtAmortBalance = $nxtAmortInt + $nxtAmortPrincipal;
-
-                            if($carryOverExcess > 0){
-                                $break_future_rent = $carryOverExcess;
-                            }
-
-                            if($nxtAmortBalance <= 0){
-                                $varAmorComplete = 1;
-                            }
-                            else{
-                                $varAmorComplete = 0;
-                            }
-
-                            $this->updateBreakdownFuture(
-                                $pymnt_id,
-                                $break_interest,
-                                $break_principal,
-                                $break_future_rent
-                            );
-
-                            $this->updateAmortization(
-                                $contract_no,
-                                $nxtAmortdue_date,
-                                $nxtAmortBalance,
-                                $amortInterestAllocation,
-                                $amortPrincipalAllocation,
-                                $varAmorComplete
-                            );
-
-                        }
-                    }
-
-                }
-
-
-            }
-        }
-
-    }
-
-    public function updateBreakdown($contract_no, $pymnt_id, $overInt, $overRent, $curInt,  $curRent, $excessAmnt, $allocated ,$payment_amount, $payment_date){
-        $breakSchedule = PaymentBreakdown::where('contract_no', $contract_no)
-        ->where('pymnt_id', $pymnt_id)
-        ->first();
-
-        if (!($contract_no && $pymnt_id)) {
-            return response()->json([
-                'status' => 404,
-                'message' => 'Contract ID or Payment ID not provided'
-            ], 404);
-        }
-
-        // Use updateOrCreate to handle both cases
-        $breakSchedule = PaymentBreakdown::updateOrCreate(
-            [
-                'contract_no' => $contract_no,
-                'pymnt_id' => $pymnt_id
-            ],
-            [
-                'overdue_interest' => $overInt ?? 0,
-                'overdue_rent' => $overRent ?? 0,
-                'current_interest' => $curInt ?? 0,
-                'current_rent' => $curRent ?? 0,
-                'future_rent' => isset($excessAmnt) ? abs($excessAmnt) : 0,
-                'allocated' => $allocated ?? false,
-                // Include other required fields for creation
-                'payment_amount' => $payment_amount ?? 0, // Example additional field
-                'payment_date' => $payment_date ?? now() // Example additional field
-            ]
-        );
-
-        return response()->json([
-            'status' => 200,
-            'message' => 'Schedule '.($breakSchedule->wasRecentlyCreated ? 'created' : 'updated').' successfully!',
-            'data' => $breakSchedule
-        ], 200);
-
-    }
-
-    public function updateBreakdownFuture(
-        $pymnt_id,
-        $future_interest,
-        $future_principal,
-        $break_future_rent
-        ){
-            $brSchedule = PaymentBreakdown::where('pymnt_id', $pymnt_id)
-            ->first();
-
-            $brSchedule->update([
-                'current_interest' => $future_interest ?? 0,
-                'current_rent' => $future_principal ?? 0,
-                'future_rent' => $break_future_rent ?? 0,
-            ]);
-            return response()->json([
-                'status' => 200,
-                'message' => 'Schedule updated successfully!'
-            ], 200);
-    }
-
-    public function updateAmortization(
-        $contract_no,
-        $due_date,
-        $balanceUpDate,
-        $interestAllocation,
-        $principalAllocation,
-        $varAmorComplete
-        ){
-            $amSchedule = MasterAmortization::where('contract_no', $contract_no)
-            ->where('due_date', $due_date)
-            ->first();
-            if(!($contract_no && $due_date)){
-                return response()->json([
-                    'status' => 404,
-                    'message' => 'Contract ID or Due Date not provided'
-                ], 404);
-        }
-        else{
-            if($balanceUpDate <= 0){
-                $amSchedule->update([
-                    'balance_payment' => 0,
-                    'balance_interest' => 0,
-                    'balance_principal' => 0,
-                    'excess' => abs($balanceUpDate),
-                    'completed' => $varAmorComplete
-                ]);
-            }else{
-                $amSchedule->update([
-                    'balance_payment' => abs($balanceUpDate),
-                    'balance_interest' =>abs($interestAllocation),
-                    'balance_principal' => abs($principalAllocation),
-                    'excess' => 0,
-                    'completed' => $varAmorComplete
-                ]);
-            };
-
-            return response()->json([
-                'status' => 200,
-                'message' => 'Schedule updated successfully!'
-            ], 200);
-        }
-    }
 
     public function getPaymentBreakdown($contract_no){
         $paymentBreakdown = PaymentBreakdown::where('contract_no', $contract_no)->get();
@@ -1024,5 +105,483 @@ class PaymentAllocationController extends Controller
             ], 404);
         }
     }
+
+
+    public function allocatePayments($contract_no){
+
+        $contractDetails = $this->getContractDetails($contract_no);
+
+        // Decode the JSON content
+        $data = $contractDetails->getData();
+
+        // Access the def_int_rate value
+        $contractDefIntRate = $data->def_int_rate;
+        $contrExecutionDate = $data->execution_date;
+
+        PaymentBreakdown::truncate();
+        MasterAmortization::truncate();
+
+        $this->paymentBreakdownService->refreshPaymentBreakdown($contract_no);
+        $this->amortizationService->getOrGenerateAmortizationSchedule($contract_no);
+
+
+        $amortizationTable = MasterAmortization::where('contract_no', $contract_no)
+        ->orderBy('due_date')
+        ->get();
+
+        $amortizationData = $amortizationTable->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'due_date' => $item->due_date,
+                'original_balance_payment' => $item->payment, // Will be modified
+                'balance_payment' => $item->balance_payment, // Will be modified
+                'current_interest' => $item->balance_interest,
+                'current_rent' => $item->balance_principal,
+                'status' => 0, // 0 = incomplete, 1 = complete
+            ];
+        })->toArray();
+
+        $payments = PaymentBreakdown::where('contract_no', $contract_no)
+        ->orderBy('payment_date')
+        ->get();
+
+        $paymentsData = $payments->map(function ($payment) {
+            return [
+                'pymnt_id' => $payment->pymnt_id,
+                'payment_date' => $payment->payment_date,
+                'payment_amount' => $payment->payment_amount,
+                'overdue_interest' => $payment->overdue_interest ?? 0,
+            ];
+        })->toArray();
+
+        if ($payments->isEmpty()) {
+            return response()->json([
+                'status' => 404,
+                'message' => 'No payments found for this contract.'
+            ], 404);
+        } else {
+
+        $dailyInterestRate = $contractDefIntRate;
+
+
+        $paymentsToUpdate = [];
+        $InterestAllocation = 0;
+        $totalAmortizations = count($amortizationData);
+
+        foreach ($amortizationData as $index => &$scheduleItem) {
+
+            echo 'Processing payment for index: '.($index). ' - ' . $amortizationData[$index]['due_date']  .'<br>';
+            // Get the current due date
+            $dueDate = Carbon::parse($scheduleItem['due_date']);
+
+            $filteredPayments = collect($payments)
+            ->filter(function ($payment) use ($index, $amortizationData, $dueDate) {
+                $paymentDate = Carbon::parse($payment['payment_date']);
+
+                // For first index (0): get all payments <= due_date
+                if ($index === 0) {
+                    return $paymentDate->lte($dueDate);
+                }
+
+                // For other indices: get payments between previous due_date and current due_date
+                $startDate = Carbon::parse($amortizationData[$index - 1]['due_date']);
+                return $paymentDate->between($startDate, $dueDate);
+            })
+            ->values()
+            ->all();
+
+            $previousRow = $amortizationData[$index - 1] ?? null;
+
+            if($previousRow){
+                $today = new DateTime();
+                if (empty($filteredPayments)) {
+                    echo ":( No applicable payments for index $index with due date {$scheduleItem['due_date']}  -  " . $amortizationData[$index]['balance_payment'] . "<br>";
+                    //$amortizationData[$index - 1]['balance_payment'] = $previousRow['balance_payment'];
+                    if($amortizationData[$index - 1]['status'] != 1){
+                        $amortizationData[$index]['balance_payment'] += $amortizationData[$index -1 ]['balance_payment'];
+                        $amortizationData[$index - 1]['status'] = 1; // complete
+                    }
+
+                    if($amortizationData[$index + 1]['due_date'] < $today){
+                        $amortizationData[$index + 1]['balance_payment'] +=  $amortizationData[$index]['balance_payment'];
+                        echo 'added ' . $amortizationData[$index]['balance_payment'] . ' to ' . $amortizationData[$index + 1]['due_date']  . ' : ' . $amortizationData[$index+1]['balance_payment'] . "<br>";
+                        $amortizationData[$index]['status'] = 1; // complete
+                    }
+                }
+                else {
+                    $lastPaymentDue = '';
+                    $arrearsIntUpdate = 0;
+                    $arrearsRentValue = 0;
+                    $futureRentValue = 0;
+                    $currentInterest = 0;
+                    $currentRent = 0;
+                    foreach ($filteredPayments as $key => &$payment) {
+                        $currentPayment = $payment;
+                        $nextPayment = next($filteredPayments); // Advances pointer and returns next value
+                        $paymentDate = Carbon::parse($payment->payment_date);
+                        $paymentAmount = $payment->payment_amount;
+                        $deductableamount = $paymentAmount;
+
+                        echo $paymentDate->format('Y-m-d') . ' - ' . $paymentAmount . '<br>';
+
+                        if($previousRow && $previousRow['status'] == 0){
+                            echo 'no!!!!! incomplet prev <br/>';
+                            $lastPaymentDue = $lastPaymentDue ?: $previousRow['due_date'];
+                            $arrearsDays = abs($paymentDate->diffInDays($lastPaymentDue, false));
+                            $lastbalanceArrearsInt = $previousRow['balance_payment']*abs($arrearsDays)*$dailyInterestRate/100;
+
+                            echo 'no!!!!! incomplet prev ' .  $arrearsDays . ' days arrears with ' .  $lastbalanceArrearsInt . ' interest ' . ' <br/>';
+                            $arrearsIntUpdate = $lastbalanceArrearsInt;
+                            if($deductableamount >= $arrearsIntUpdate){
+                                $arrearsRentValue = $deductableamount - $arrearsIntUpdate;
+                            } else if($deductableamount < $arrearsIntUpdate){
+                                $arrearsIntUpdate = $deductableamount;
+                                $arrearsRentValue = 0;
+                            }
+                            $previousRow['balance_payment'] += $lastbalanceArrearsInt;
+                            $previousRow['balance_payment'] -= $paymentAmount;
+                            $amortizationData[$index-1]['balance_payment'] = $previousRow['balance_payment'];
+                            $lastPaymentDue = $paymentDate;
+                            $amortizationData[$index]['balance_payment'] += $previousRow['balance_payment'];
+                        } else if($previousRow && $previousRow['status'] == 1){
+                            echo 'completed prev <br/>';
+                            if($previousRow['balance_payment'] > 0){
+                                $lastPaymentDue = $lastPaymentDue ?: $previousRow['due_date'];
+                                echo 'Prev ' . $index-1 . ' ' . $amortizationData[$index-1]['due_date'] .' Has Balance!!! <br/>';
+                                echo 'last due : ' . $lastPaymentDue . '<br/>';
+                                $arrearsDays = abs($paymentDate->diffInDays($lastPaymentDue, false));
+                                echo 'diff : ' . $arrearsDays . '<br/>';
+
+                                echo 'pre-prevBalance  : ' . $previousRow['balance_payment'] . '<br/>';
+                                $lastbalanceArrearsInt = $previousRow['balance_payment']*abs($arrearsDays)*$dailyInterestRate/100;
+                                $arrearsIntUpdate = $lastbalanceArrearsInt;
+                                echo '$lastbalanceArrearsIn :  '. $lastbalanceArrearsInt;
+                                if($paymentAmount <= $lastbalanceArrearsInt){
+                                    $arrearsIntUpdate = $deductableamount;
+                                    $arrearsRentValue = 0;
+                                } else {
+                                    $arrearsIntUpdate = $lastbalanceArrearsInt;
+                                    $arrearsRentValue = $deductableamount - $lastbalanceArrearsInt;
+                                }
+                                $previousRow['balance_payment'] += $lastbalanceArrearsInt;
+                                $previousRow['balance_payment'] -= $paymentAmount;
+                                echo 'prevBalance  : ' . $previousRow['balance_payment'] . '<br/>';
+                                $amortizationData[$index-1]['balance_payment'] = $previousRow['balance_payment'];
+
+                                echo 'prevBalance  : ' . $amortizationData[$index-1]['balance_payment'] . '<br/>';
+
+
+
+                                $calCounter = $index;
+                                $itemsLeft = $totalAmortizations - ($calCounter);
+                                echo "Items left: " . $itemsLeft . '<br/>';
+
+                                while ($calCounter < $totalAmortizations) {  // Use < instead of <= to avoid off-by-one
+                                echo "Processing index: " . $calCounter . '<br/>';
+                                    $amortizationData[$calCounter]['balance_payment'] = $amortizationData[$calCounter]['original_balance_payment'];
+                                    $amortizationData[$calCounter]['status'] = 0;
+                                    $calCounter++;  // Critical: Increment counter
+                                }
+
+
+                                if($amortizationData[$index-1]['balance_payment'] <= 0){
+                                    $amortizationData[$index-1]['status'] = 1;
+                                } else {
+                                    //$next = $payment[2];
+                                    $arrearsDays = abs(Carbon::parse($today)->diffInDays($amortizationData[$index-1]['due_date'], false));
+                                    if($nextPayment){
+                                        echo '$today is : ' . Carbon::parse($today) .'<br/>';
+
+                                        echo '$due Diff has next payment : ' . $arrearsDays .'<br/>';
+                                        echo '@@@@@@@@2 has next payment!' . '<br/>';
+                                        if($arrearsDays >= 1){
+                                            $amortizationData[$index]['balance_payment'] += $amortizationData[$index-1]['balance_payment'];
+                                            $amortizationData[$index-1]['status'] = 1;
+                                        } else {
+                                            $amortizationData[$index-1]['status'] = 0;
+                                        }
+
+                                        echo 'changed status to : ' . $amortizationData[$index-1]['status'] . '<br/>';
+                                    } else {
+                                        echo 'no payment after : ' . $payment->payment_date .'<br/>';
+                                        if($arrearsDays >= 1){
+                                            $calCounter = $index;
+                                            $itemsLeft = $totalAmortizations - ($calCounter);
+                                            echo "Items left: " . $itemsLeft . '<br/>';
+
+                                            while ($calCounter < $totalAmortizations) {  // Use < instead of <= to avoid off-by-one
+                                            echo "Processing index: " . $calCounter . '<br/>';
+                                                $amortizationData[$calCounter]['balance_payment'] = $amortizationData[$calCounter]['original_balance_payment'];
+                                                $amortizationData[$calCounter]['status'] = 0;
+                                                $calCounter++;  // Critical: Increment counter
+                                            }
+
+                                            $amortizationData[$index]['balance_payment'] +=  $amortizationData[$index-1]['balance_payment'];
+                                            $amortizationData[$index-1]['status'] = 1;
+                                            echo 'payment Updated to : ' . $amortizationData[$index]['balance_payment'] .'<br/>';
+                                        }
+                                    };
+
+                                }
+
+                                $lastPaymentDue = $paymentDate;
+
+                                echo '$$lastbalanceArrearsInt : ' . $lastbalanceArrearsInt. '<br/>';
+                                echo '$$arrearsRentValue : ' . $arrearsRentValue. '<br/>';
+
+                            } else {
+
+                                if($amortizationData[$index]['status'] == 1){
+                                    echo 'completed current <br/>';
+                                            $deductableAmount = $futureRentValue = $paymentAmount;
+                                            $i = 1;
+                                            while ($deductableAmount > 0) {
+                                                echo ' has ' . $amortizationData[$index+$i]['balance_payment']. ' on  '.  $amortizationData[$index+$i]['due_date'] . ' <br/>';
+                                                if($amortizationData[$index+$i]['balance_payment'] >= $deductableAmount){
+                                                    $amortizationData[$index+$i]['balance_payment'] -= $deductableAmount;
+                                                    $deductableAmount = 0;
+                                                } else {
+                                                    $amortizationData[$index+$i]['balance_payment'] -= $deductableAmount;
+                                                    $deductableAmount -= $amortizationData[$index+$i]['balance_payment'];
+                                                }
+
+                                                if($amortizationData[$index+$i]['balance_payment'] < 0){
+                                                    $amortizationData[$index+$i]['status'] = 1;
+                                                    echo 'completed '.  $amortizationData[$index+$i]['due_date'] . ' <br/>';
+                                                } else {
+                                                    echo $amortizationData[$index+$i]['balance_payment'] . ' left on  '.  $amortizationData[$index+$i]['due_date'] . ' <br/>';
+                                                }
+                                                $i++;
+                                            }
+                                } else {
+                                    echo 'incomplete current ' . $amortizationData[$index]['balance_payment'] . ' <br/>';
+                                    if($amortizationData[$index]['balance_payment'] <= $paymentAmount){
+                                        $amortizationData[$index]['status'] = 1;
+                                        $amortizationData[$index]['balance_payment'] -= $paymentAmount;
+                                        if ($amortizationData[$index]['balance_payment'] < 0){
+                                            $deductableAmount = $futureRentValue = abs($amortizationData[$index]['balance_payment']);
+                                            echo 'paid ' . $deductableAmount . ' future rent  <br/>';
+                                            $i = 1;
+                                            while ($deductableAmount > 0) {
+                                                if($amortizationData[$index+$i]['balance_payment'] >= $deductableAmount){
+                                                    echo 'deducted ' . $deductableAmount . ' from ' . $amortizationData[$index+$i]['balance_payment'] .   '<br/>';
+                                                    $amortizationData[$index+$i]['balance_payment'] -= $deductableAmount;
+                                                    echo $amortizationData[$index+$i]['balance_payment'] . ' left  on ' .  $amortizationData[$index+$i]['due_date'] .   '<br/>';
+                                                    $deductableAmount = 0;
+                                                } else {
+                                                    $amortizationData[$index+$i]['balance_payment'] -= $deductableAmount;
+                                                    $deductableAmount -= $amortizationData[$index+$i]['balance_payment'];
+
+                                                    if($amortizationData[$index+$i]['balance_payment'] < 0){
+                                                        $amortizationData[$index+$i]['status'] = 1;
+                                                    }
+                                                }
+                                                $i++;
+                                            }
+                                            unset($i);
+                                        }
+                                    } else {
+                                        echo 'less than balance <br/>';
+                                        $deductableAmount = $paymentAmount;
+                                        $balancePayment = $amortizationData[$index]['balance_payment'];
+                                        $currentInterest = $amortizationData[$index]['current_interest'];
+                                        $currentRent = $amortizationData[$index]['current_rent'];
+
+                                        //$arrearsRentValue = $balancePayment - $currentRent -$currentInterest;
+                                        echo $index . ' $$balancePayment : ' . $balancePayment . '<br/>';
+
+                                        if($deductableAmount >= $balancePayment){
+                                            $balancePayment -= $deductableAmount;
+                                            $futureRentValue = abs($balancePayment);
+                                            $amortizationData[$index]['status'] = 1;
+
+                                            if($amortizationData[$index+1]){
+                                                $amortizationData[$index+1]['balance_payment'] += $balancePayment;
+                                                if($amortizationData[$index+1]['balance_payment'] < 0){
+                                                    $amortizationData[$index+1]['balance_payment']['status'] = 1;
+                                                }
+                                            }
+                                        } else {
+                                            $arrearsRentValue = $deductableAmount;
+                                            $balancePayment -= $deductableAmount;
+                                            $deductableAmount = 0;
+                                            echo ' added  : ' . $balancePayment .  '<br/>';
+                                            $amortizationData[$index]['status'] = 0;
+                                            echo ' made : ' .  $amortizationData[$index]['due_date'] . ' '. $amortizationData[$index]['status'] .' <br/>';
+                                            $currentInterest = 0;
+                                            $currentRent = 0;
+                                        }
+
+                                        if($deductableAmount > 0){
+                                            if( $currentInterest <= $deductableAmount){
+                                                $deductableAmount -= $currentInterest;
+                                                if($deductableAmount > 0){
+                                                    if($currentRent <= $deductableAmount){
+                                                        $deductableAmount -= $currentRent;
+                                                    } else {
+                                                            $currentRent = $deductableAmount;
+                                                    }
+                                                }
+                                            } else {
+                                                if($deductableAmount > 0){
+                                                    $currentInterest = $deductableAmount;
+                                                }
+                                            }
+                                        }
+
+                                        $amortizationData[$index]['balance_payment'] -= $paymentAmount;
+                                        $paymentAmount = 0;
+                                    }
+                                }
+
+                            }
+
+
+
+
+                        }
+                        //echo $arrearsIntUpdate;
+                        $paymentsToUpdate[] = [
+                            'pymnt_id' => $payment['pymnt_id'],
+                            'payment_date' => $payment['payment_date'],
+                            'overdue_interest' => $arrearsIntUpdate,
+                            'overdue_rent' => $arrearsRentValue,
+                            'future_rent' => $futureRentValue,
+                            'current_interest' => $currentInterest,
+                            'current_rent' => $currentRent,
+                        ];
+
+                    }
+                    unset($payment); // Unset to avoid memory issues in large loops
+
+
+                    $previousRow['status'] = 1;
+                    $amortizationData[$index - 1] = $previousRow;
+                    //$lastPaymentDue = '';
+
+
+                }
+
+            } else {
+                if (empty($filteredPayments)) {
+                    echo "No applicable payments for index $index with due date {$scheduleItem['due_date']}<br>";
+                    continue;
+                }
+                else {
+                    foreach ($filteredPayments as &$payment) {
+                        $currentInterest = $currentRent = $futureRent = 0;
+                        $DeductableAmnt = $payment['payment_amount'];
+
+                        if($DeductableAmnt >= $amortizationData[$index]['current_interest']){
+                            $currentInterest =  $amortizationData[$index]['current_interest'];
+                            $DeductableAmnt -= $amortizationData[$index]['current_interest'];
+                            if($DeductableAmnt >= $amortizationData[$index]['current_rent']){
+                                $currentRent = $amortizationData[$index]['current_rent'];
+                                $DeductableAmnt -= $amortizationData[$index]['current_rent'];
+                            } else {
+                                $currentRent = $DeductableAmnt;
+                                $DeductableAmnt = 0;
+                            }
+                        } else {
+                            $currentInterest = $DeductableAmnt;
+                            $DeductableAmnt = 0;
+                        }
+                        if($DeductableAmnt > 0){
+                            $futureRent = $DeductableAmnt;
+                        } else {
+                            $futureRent = 0;
+                        }
+                        //$currentInterest = $DeductableAmnt - $amortizationData[$index]['current_interest'];
+                        //$currentRent = $amortizationData[$index]['balance_payment'] - $amortizationData[$index]['current_rent'];
+                        $paymentsToUpdate[] = [
+                            'pymnt_id' => $payment['pymnt_id'],
+                            'payment_date' => $payment['payment_date'],
+                            'current_interest' => $currentInterest,
+                            'current_rent' => $currentRent,
+                            'future_rent' => $futureRent,
+                        ];
+                    }
+                    $amortizationData[$index]['balance_payment']-= collect($filteredPayments)->sum('payment_amount');
+                    if($amortizationData[$index]['balance_payment'] <= 0){
+                        $amortizationData[$index]['status'] = 1; // Mark as complete
+                        $amortizationData[$index + 1]['balance_payment'] += $amortizationData[$index]['balance_payment']; // Set balance to zero
+
+
+                    } else {
+                        $amortizationData[$index]['status'] = 0; // Still incomplete
+                    }
+                }
+            }
+
+            $lastPaymentDue = null;
+        }
+
+
+        $caseBalance = [];
+        $caseCompleted = [];
+        $dueDates = [];
+
+        foreach ($amortizationData as $row) {
+            $dueDate = $row['due_date'];
+            $caseBalance[] = "WHEN due_date = '{$dueDate}' THEN {$row['balance_payment']}";
+            $caseCompleted[] = "WHEN due_date = '{$dueDate}' THEN {$row['status']}";
+            $dueDates[] = "'{$dueDate}'";
+        }
+        unset($row); // Unset the last element to avoid duplicate key error
+
+
+        DB::update("
+            UPDATE  master_amortization
+            SET
+                balance_payment = CASE ".implode(' ', $caseBalance)." END,
+                completed = CASE ".implode(' ', $caseCompleted)." END
+            WHERE
+                contract_no = ? AND
+                due_date IN (".implode(',', $dueDates).")
+        ", [$contract_no]);
+        }
+
+        // Update payment breakdowns
+        $caseInterest = [];
+        $caseRent = [];
+        $caseOverDueInterest = [];
+        $caseOverDueRent = [];
+        $caseFutureRent = [];
+        $ids = [];
+
+        //var_dump($paymentsToUpdate);
+
+        foreach ($paymentsToUpdate as $data) {
+            $overDueInterest = $data['overdue_interest'] ?? 0; // Default to 0 if not set
+            $overDueRent = $data['overdue_rent'] ?? 0; // Default to 0 if not set
+            $interest = $data['current_interest'] ?? 0; // Default to 0 if not set
+            $rent = $data['current_rent'] ?? 0; // Default to 0 if not set
+            $futureRent = $data['future_rent'] ?? 0; // Default to 0 if not set
+
+            $id = $data['pymnt_id'];
+            $caseOverDueInterest[] = "WHEN pymnt_id = '{$id}' THEN {$overDueInterest}";
+            $caseOverDueRent[] = "WHEN pymnt_id = '{$id}' THEN {$overDueRent}";
+            $caseInterest[] = "WHEN pymnt_id = '{$id}' THEN {$interest}";
+            $caseRent[] = "WHEN pymnt_id = '{$id}' THEN {$rent}";
+            $caseFutureRent[] = "WHEN pymnt_id = '{$id}' THEN {$futureRent}";
+            $ids[] = "'{$id}'";
+        }
+        unset($data); // Unset the last element to avoid duplicate key error
+
+        DB::update("
+            UPDATE payment_breakdowns
+            SET
+                current_interest = CASE ".implode(' ', $caseInterest)." END,
+                current_rent = CASE ".implode(' ', $caseRent)." END,
+                overdue_interest = CASE ".implode(' ', $caseOverDueInterest)." END,
+                overdue_rent = CASE ".implode(' ', $caseOverDueRent)." END,
+                future_rent = CASE ".implode(' ', $caseFutureRent)." END
+            WHERE pymnt_id IN (".implode(',', $ids).")
+        ");
+
+
+
+    }
+
 
 }
