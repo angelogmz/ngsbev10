@@ -60,22 +60,32 @@ class ContractController extends Controller
     }
 
     public function findContractEndingWith($contract_no){
-        $contractDetails = Contract::where('contract_no', 'like', '%'.$contract_no)
-        ->orderByDesc('id')  // Uses the primary key index
-        ->first();
+        try{
+            $contractDetails = Contract::where('contract_no', 'like', '%'.$contract_no)
+            ->orderByDesc('id')  // Uses the primary key index
+            ->first();
 
-        if($contractDetails){
-            return response()->json([
-                'status' => 200,
-                'contract' => $contractDetails
-            ], 200);
-        }
-        else{
+            if($contractDetails){
+                return response()->json([
+                    'status' => 200,
+                    'contract' => $contractDetails
+                ], 200);
+            }
+            else{
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'No such Contract found'
+                ], 500);
+            }
+        } catch(\Exception $e){
             return response()->json([
                 'status' => 500,
-                'message' => 'No such Contract found'
+                'message' => 'Error retrieving contract',
+                'error' => $e->getMessage()  // Only include this in development environment
             ], 500);
         }
+
+
     }
 
     public function addContract(Request $request){
