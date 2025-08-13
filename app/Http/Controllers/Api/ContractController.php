@@ -60,9 +60,10 @@ class ContractController extends Controller
     }
 
     public function findContractEndingWith($contract_no){
-        $contractDetails = Contract::where('contract_no', 'like', '%tstusr')
-        ->orderBy('id', 'desc') // Ensure you get the latest one
+        $contractDetails = Contract::where('contract_no', 'like', '%'.$contract_no)
+        ->orderByDesc('id')  // Uses the primary key index
         ->first();
+
         if($contractDetails){
             return response()->json([
                 'status' => 200,
