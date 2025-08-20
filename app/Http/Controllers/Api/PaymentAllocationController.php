@@ -327,14 +327,10 @@ class PaymentAllocationController extends Controller
                     echo 'has no prev' .'<br>';
                     if($filteredPayments){
                         foreach ($filteredPayments as $key => &$payment) {
-                            $amortizationData[$index]['balance_payment'] -= $payment->payment_amount;
+                            $amortizationData[$index]['balance_payment'] -= $payment['payment_amount'];
                         }
                     }
-                    else{
-                        echo 'No payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
-                        continue;
-                    }
-
+                    continue;
                 }
 
             }
