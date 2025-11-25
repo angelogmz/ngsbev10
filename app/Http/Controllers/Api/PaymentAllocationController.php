@@ -184,6 +184,8 @@ class PaymentAllocationController extends Controller
             ->values()
             ->all();
 
+            //var_dump($filteredPayments);
+
             $today = Carbon::now();
             $dueDiff = $today->diffInDays($dueDate, false);
 
@@ -196,6 +198,7 @@ class PaymentAllocationController extends Controller
                         $lastPaidOn = '';
                         //var_dump($filteredPayments);
                         if($filteredPayments){
+                            echo 'Payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
                             foreach ($filteredPayments as $key => &$payment) {
                                 $paymentDate = Carbon::parse($payment['payment_date']);
                                 $paymentAmount = $payment['payment_amount'];
@@ -216,8 +219,10 @@ class PaymentAllocationController extends Controller
                                         $amortizationData[$index - 1]['overdue_int'] += $lastbalanceArrearsInt;
                                         $payment['overdue_interest'] =  $lastbalanceArrearsInt;
                                         $deductableamountBreakDown -= $lastbalanceArrearsInt;
+
                                         var_dump($deductableamountBreakDown);
                                         if($deductableamountBreakDown < $amortizationData[$index - 1]['balance_payment']){
+                                            echo 'not full paymnt ' . $deductableamountBreakDown . '<br>';
                                             $payment['overdue_rent'] = abs($deductableamountBreakDown);
                                         } else{
                                             $payment['overdue_rent'] = $amortizationData[$index - 1]['balance_payment'];
@@ -226,7 +231,7 @@ class PaymentAllocationController extends Controller
                                         $deductableamount -= $amortizationData[$index - 1]['overdue_int'];
                                         if($deductableamount < 0){
                                             $amortizationData[$index - 1]['overdue_int'] = abs($deductableamount);
-                                        } else{
+                                        } else {
                                             $amortizationData[$index - 1]['overdue_int'] = 0;
                                             $amortizationData[$index - 1]['balance_payment'] -= $deductableamount;
                                             if($amortizationData[$index - 1]['balance_payment'] < 0) {
@@ -235,13 +240,25 @@ class PaymentAllocationController extends Controller
                                                 $amortizationData[$index - 1]['balance_payment'] = 0;
                                             }
                                         }
+                                        echo 'last payment arr: ' . $amortizationData[$index - 1]['balance_payment']  . '<br>';
                                     }
                                     else{
                                         echo 'paid on time ' . $paymentAmount . '<br>';
-                                        echo $amortizationData[$index - 1]['balance_payment'] . '<br>';
+                                        echo 'prevbalance to pay ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
                                         echo $amortizationData[$index]['balance_payment'] . '<br>';
+
+                                        if($amortizationData[$index - 1]['balance_payment'] > 0){
+                                            $amortizationData[$index - 1]['balance_payment'] -= $paymentAmount;
+                                            if($amortizationData[$index - 1]['balance_payment'] < 0) {
+                                                $amortizationData[$index]['balance_payment'] += abs($amortizationData[$index - 1]['balance_payment']);
+                                                $payment['future_rent'] = abs($amortizationData[$index - 1]['balance_payment']);
+                                            } else {
+                                                $payment['current_rent'] = $paymentAmount;
+                                            }
+                                        }
                                     }
                                     $payment['allocated'] = 1; // Mark as allocated
+                                    echo 'final currenr amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
                                 } else {
                                     echo 'current ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
@@ -320,6 +337,7 @@ class PaymentAllocationController extends Controller
                             $amortizationData[$index]['overdue_int'] += $lastbalanceArrearsInt + $amortizationData[$index - 1]['overdue_int'];
                             $amortizationData[$index]['balance_payment'] += $amortizationData[$index - 1]['balance_payment'];
                             $amortizationData[$index - 1]['balance_payment'] = 0;
+                            echo 'final current amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
                         }
 
 
@@ -328,6 +346,19 @@ class PaymentAllocationController extends Controller
                     if($filteredPayments){
                         foreach ($filteredPayments as $key => &$payment) {
                             $amortizationData[$index]['balance_payment'] -= $payment['payment_amount'];
+                            $firstPaymentDate = Carbon::parse($payment['payment_date']);
+                            $scheduledPaymentDate = $amortizationData[$index]['due_date'];
+
+                            $arrearsDays = $firstPaymentDate->diffInDays($scheduledPaymentDate, false);
+
+                            if($arrearsDays > 0){
+                                $payment["current_rent"] = $payment['payment_amount'];
+                            }
+                            $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
+
+                            if ($key !== false) {
+                                $paymentsData[$key] = $payment; // Update existing
+                            }
                         }
                     }
                     continue;
