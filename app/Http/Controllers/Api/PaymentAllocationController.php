@@ -368,8 +368,72 @@ class PaymentAllocationController extends Controller
 
 
         }
+        unset($scheduleItem); // Unset reference to avoid accidental modifications
 
-        //var_dump($paymentsData);
+        // Handle payments after the LAST amortization due date
+        $lastDueDate = Carbon::parse(end($amortizationData)['due_date']);
+
+        // Store indices of payments after last amortization
+        $paymentIndicesAfterLastAmortization = [];
+
+        // First pass: identify which payments to process and store their indices
+        foreach ($paymentsData as $index => $payment) {
+            $paymentDate = Carbon::parse($payment['payment_date']);
+            if ($paymentDate->greaterThanOrEqualTo($lastDueDate)) {
+                $paymentIndicesAfterLastAmortization[] = [
+                    'index' => $index,
+                    'payment_date' => $paymentDate,
+                    'payment_amount' => $payment['payment_amount']
+                ];
+            }
+        }
+
+        // Sort by payment date
+        usort($paymentIndicesAfterLastAmortization, function($a, $b) {
+            return $a['payment_date'] <=> $b['payment_date'];
+        });
+
+        if(!empty($paymentIndicesAfterLastAmortization)){
+            // Get the last amortization item reference
+            $lastAmortizationItem = &$amortizationData[count($amortizationData) - 1];
+            $lastAmortizationDueDate = Carbon::parse($lastAmortizationItem['due_date']);
+            $lastAmortizationIndex = count($amortizationData) - 1;
+
+            echo "<h3>Processing Payments After Last Amortization</h3>";
+            echo "Last Amortization Due Date: " . $lastAmortizationDueDate->format('Y-m-d') . "<br>";
+            echo "Balance before processing late payments: " . ($lastAmortizationItem['balance_payment'] ?? 0) . "<br><br>";
+
+            foreach ($paymentIndicesAfterLastAmortization as $paymentInfo) {
+                $index = $paymentInfo['index'];
+                $paymentDate = $paymentInfo['payment_date'];
+                $paymentAmount = $paymentInfo['payment_amount'];
+                $remainingAmount = $paymentAmount;
+                $lastPaid = $lastPaid ?? $lastAmortizationDueDate;
+
+                echo "Processing Payment Date: " . $paymentDate->format('Y-m-d') . " - Amount: " . $paymentAmount . "<br>";
+
+                $daysDifference = $lastPaid->diffInDays($paymentDate);
+                echo 'Arrears Days: ' . abs($daysDifference) . '<br>';
+
+                $lastbalanceArrearsInt = round($lastAmortizationItem['balance_payment'] * abs($daysDifference) * $contractDefIntRate / 100, 2);
+                echo "Calculated Overdue Interest: " . $lastbalanceArrearsInt . "<br>";
+
+                if($paymentAmount >= $lastbalanceArrearsInt){
+                    $paymentsData[$index]['overdue_interest'] = $lastbalanceArrearsInt;
+                    $remainingAmount = $paymentAmount - $lastbalanceArrearsInt;
+                    if($remainingAmount > 0){
+                        $paymentsData[$index]['overdue_rent'] = $remainingAmount;
+                        $amortizationData[$lastAmortizationIndex]['balance_payment'] -= $remainingAmount;
+                    }
+                } else {
+                    $paymentsData[$index]['overdue_interest'] = $paymentAmount;
+                }
+                // Update the original paymentsData array
+
+                $lastPaid = $paymentDate;
+                echo "<br>";
+            }
+        }
 
         $caseBalance = [];
         $caseOverDueInt = [];
