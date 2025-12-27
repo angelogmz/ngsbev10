@@ -109,6 +109,7 @@ class PaymentAllocationController extends Controller
 
     public function allocatePayments($contract_no){
 
+
         $contractDetails = $this->getContractDetails($contract_no);
 
         // Decode the JSON content
@@ -342,26 +343,96 @@ class PaymentAllocationController extends Controller
 
 
                 } else {
-                    echo 'has no prev' .'<br>';
-                    if($filteredPayments){
+
+                    echo 'Processing first amortization row (no previous payments to consider)' . '<br>';
+
+                    if ($filteredPayments) {
                         foreach ($filteredPayments as $key => &$payment) {
-                            $amortizationData[$index]['balance_payment'] -= $payment['payment_amount'];
-                            $firstPaymentDate = Carbon::parse($payment['payment_date']);
-                            $scheduledPaymentDate = $amortizationData[$index]['due_date'];
+                            echo 'Processing payment: ' . $payment['payment_amount'] . '<br>';
+                            echo 'Current amortization balance: ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
-                            $arrearsDays = $firstPaymentDate->diffInDays($scheduledPaymentDate, false);
+                            // Initialize tracking fields
+                            $payment['current_rent'] = 0;
+                            $payment['future_rent'] = 0;
 
-                            if($arrearsDays > 0){
-                                $payment["current_rent"] = $payment['payment_amount'];
+                            $paymentAmount = $payment['payment_amount'];
+                            $currentIndex = $index; // Start with current amortization row
+
+                            // Continue allocating until payment is fully used or no more amortization rows
+                            while ($paymentAmount > 0 && isset($amortizationData[$currentIndex])) {
+                                $currentBalance = &$amortizationData[$currentIndex]['balance_payment'];
+
+                                // For the first row, track as current_rent
+                                if ($currentIndex === $index) {
+                                    if ($paymentAmount >= $currentBalance && $currentBalance > 0) {
+                                        // Full payment covers this row's balance
+                                        $payment['current_rent'] = $currentBalance;
+                                        $paymentAmount -= $currentBalance;
+                                        $currentBalance = 0;
+
+                                        echo "  - Applied {$payment['current_rent']} to current rent<br>";
+
+                                        // If payment has remaining, it will continue to next row in loop
+                                    } elseif ($paymentAmount < $currentBalance && $paymentAmount > 0) {
+                                        // Partial payment to current row
+                                        $payment['current_rent'] = $paymentAmount;
+                                        $currentBalance -= $paymentAmount;
+                                        $paymentAmount = 0;
+
+                                        echo "  - Applied {$payment['current_rent']} to current rent (partial)<br>";
+                                    } elseif ($currentBalance <= 0) {
+                                        // Current row already paid, skip to next
+                                        echo "  - Skipping row {$currentIndex} (already paid)<br>";
+                                    }
+                                }
+                                // For subsequent rows, track as future_rent
+                                else {
+                                    if ($paymentAmount >= $currentBalance && $currentBalance > 0) {
+                                        // Apply to this future row
+                                        $appliedAmount = $currentBalance;
+                                        $payment['future_rent'] += $appliedAmount;
+                                        $paymentAmount -= $appliedAmount;
+                                        $currentBalance = 0;
+
+                                        echo "  - Applied {$appliedAmount} to future row {$currentIndex}<br>";
+                                    } elseif ($paymentAmount < $currentBalance && $paymentAmount > 0) {
+                                        // Partial application to future row
+                                        $payment['future_rent'] += $paymentAmount;
+                                        $currentBalance -= $paymentAmount;
+                                        $paymentAmount = 0;
+
+                                        echo "  - Applied {$paymentAmount} to future row {$currentIndex} (partial)<br>";
+                                    } elseif ($currentBalance <= 0) {
+                                        // This future row already paid, skip to next
+                                        echo "  - Skipping future row {$currentIndex} (already paid)<br>";
+                                    }
+                                }
+
+                                // Move to next amortization row if payment still has remaining amount
+                                if ($paymentAmount > 0) {
+                                    $currentIndex++;
+                                }
                             }
-                            $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
 
-                            if ($key !== false) {
-                                $paymentsData[$key] = $payment; // Update existing
+                            // If payment still has remaining after all amortization rows
+                            if ($paymentAmount > 0) {
+                                echo "  - Warning: {$paymentAmount} could not be allocated (no more amortization rows)<br>";
+                                $payment['unallocated'] = $paymentAmount;
                             }
+
+                            // Update payment in original array
+                            $originalKey = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
+                            if ($originalKey !== false) {
+                                $paymentsData[$originalKey] = $payment;
+                            }
+
+                            echo '<br>';
                         }
                     }
+
+                    echo 'Moving to next amortization row...<br>';
                     continue;
+
                 }
 
             }
