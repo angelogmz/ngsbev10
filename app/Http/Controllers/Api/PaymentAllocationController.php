@@ -108,7 +108,10 @@ class PaymentAllocationController extends Controller
 
 
     public function allocatePayments($contract_no){
-
+    // Add CORS headers for testing
+    //header('Access-Control-Allow-Origin: http://localhost:5173');
+    // header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+    // header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
         $contractDetails = $this->getContractDetails($contract_no);
 
@@ -171,6 +174,11 @@ class PaymentAllocationController extends Controller
 
             $filteredPayments = collect($paymentsData)
             ->filter(function ($payment) use ($index, $amortizationData, $dueDate) {
+                // First filter: only include unallocated payments
+                if (($payment['allocated'] ?? 0) === 1) {
+                    return false; // Skip already allocated payments
+                }
+
                 $paymentDate = Carbon::parse($payment['payment_date']);
 
                 // For first index (0): get all payments <= due_date
@@ -194,251 +202,230 @@ class PaymentAllocationController extends Controller
                 $previousRow = $amortizationData[$index - 1] ?? null;
 
                 if($previousRow){
-                    echo 'has prev' .'<br>';
-                        $lastPaymentDue = '';
-                        $lastPaidOn = '';
-                        //var_dump($filteredPayments);
-                        if($filteredPayments){
-                            echo 'Payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
-                            foreach ($filteredPayments as $key => &$payment) {
-                                $paymentDate = Carbon::parse($payment['payment_date']);
-                                $paymentAmount = $payment['payment_amount'];
-                                $deductableamount = $paymentAmount;
-                                $deductableamountBreakDown = $paymentAmount;
+                        echo '-------------' .'<br>';
+                        echo 'has prev' .'<br>';
+                        echo 'prev balance ' . $previousRow['balance_payment'] .'<br>';
+                        echo 'current balance ' . $amortizationData[$index]['balance_payment'] .'<br>';
+                        if($amortizationData[$index]['balance_payment'] <= 0){
+                            $totalPaidV =  0;
+                            echo 'already completed ' .'<br>';
+                            echo 'AAAAAAAAAAAA current balance ' . $amortizationData[$index]['balance_payment'] .'<br>';
+                            if($filteredPayments){
+                                $totalPaidV = array_sum(array_column($filteredPayments, 'payment_amount'));
+                                $amortizationData[$index]['balance_payment'] -= $totalPaidV;
+                                echo 'BBBBBBBBBBBB total paid ' . $amortizationData[$index]['balance_payment'] .'<br>';
 
-                                echo 'Payment Date: ' . $paymentDate->toDateString() . ' - Amount: ' . $paymentAmount . '<br>';
-                                $lastPaymentDue = $lastPaidOn ?: $amortizationData[$index - 1]['due_date'];
-                                $arrearsDays = abs($paymentDate->diffInDays($lastPaymentDue, false));
-                                //var_dump($payment);
-                                if($amortizationData[$index - 1]['balance_payment'] > 0){
-                                    if($arrearsDays >= 1){
-                                        $lastbalanceArrearsInt = round($amortizationData[$index - 1]['balance_payment']*abs($arrearsDays)*$contractDefIntRate/100, 2);
+                                foreach ($filteredPayments as &$payment) {
+                                    $payment['allocated'] = 1;
+                                }
+                            };
 
-                                        if($lastbalanceArrearsInt > $paymentAmount){
-                                            $payment['overdue_interest'] = $lastbalanceArrearsInt;
-                                        }
-                                        $amortizationData[$index - 1]['overdue_int'] += $lastbalanceArrearsInt;
-                                        $payment['overdue_interest'] =  $lastbalanceArrearsInt;
-                                        $deductableamountBreakDown -= $lastbalanceArrearsInt;
-
-                                        var_dump($deductableamountBreakDown);
-                                        if($deductableamountBreakDown < $amortizationData[$index - 1]['balance_payment']){
-                                            echo 'not full paymnt ' . $deductableamountBreakDown . '<br>';
-                                            $payment['overdue_rent'] = abs($deductableamountBreakDown);
-                                        } else{
-                                            $payment['overdue_rent'] = $amortizationData[$index - 1]['balance_payment'];
-                                        }
-
-                                        $deductableamount -= $amortizationData[$index - 1]['overdue_int'];
-                                        if($deductableamount < 0){
-                                            $amortizationData[$index - 1]['overdue_int'] = abs($deductableamount);
-                                        } else {
-                                            $amortizationData[$index - 1]['overdue_int'] = 0;
-                                            $amortizationData[$index - 1]['balance_payment'] -= $deductableamount;
-                                            if($amortizationData[$index - 1]['balance_payment'] < 0) {
-                                                $amortizationData[$index]['balance_payment'] -= abs($amortizationData[$index - 1]['balance_payment']);
-                                                $payment['future_rent'] = abs($amortizationData[$index - 1]['balance_payment']);
-                                                $amortizationData[$index - 1]['balance_payment'] = 0;
-                                            }
-                                        }
-                                        echo 'last payment arr: ' . $amortizationData[$index - 1]['balance_payment']  . '<br>';
-                                    }
-                                    else{
-                                        echo 'paid on time ' . $paymentAmount . '<br>';
-                                        echo 'prevbalance to pay ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
-                                        echo $amortizationData[$index]['balance_payment'] . '<br>';
-
-                                        if($amortizationData[$index - 1]['balance_payment'] > 0){
-                                            $amortizationData[$index - 1]['balance_payment'] -= $paymentAmount;
-                                            if($amortizationData[$index - 1]['balance_payment'] < 0) {
-                                                $amortizationData[$index]['balance_payment'] += abs($amortizationData[$index - 1]['balance_payment']);
-                                                $payment['future_rent'] = abs($amortizationData[$index - 1]['balance_payment']);
-                                            } else {
-                                                $payment['current_rent'] = $paymentAmount;
-                                            }
-                                        }
-                                    }
-                                    $payment['allocated'] = 1; // Mark as allocated
-                                    echo 'final currenr amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
+                            if ($amortizationData[$index]['balance_payment'] < 0) {
+                                if (isset($amortizationData[$index + 1])) {
+                                    echo 'next balance before ' . $amortizationData[$index + 1]['balance_payment'] . '<br>';
+                                    $amortizationData[$index + 1]['balance_payment'] -= abs($amortizationData[$index]['balance_payment']);
+                                    echo 'next balance after ' . $amortizationData[$index + 1]['balance_payment'] . '<br>';
+                                    $amortizationData[$index]['balance_payment'] = 0;
                                 } else {
-                                    echo 'current ' . $amortizationData[$index]['balance_payment'] . '<br>';
+                                    echo 'No next row available<br>';
+                                }
+                            }
 
-                                    if($payment){
-                                        echo $payment['allocated'] . '<br>';
-                                        if($payment['allocated'] == 1){
-                                            echo 'allocated ' . $payment['pymnt_id'] . '<br>';
-                                            continue; // Skip already allocated payments
-                                        } else {
-                                            echo 'not allocated ' . $payment['payment_amount'] . '<br>';
-                                            if($amortizationData[$index]['balance_payment'] > $paymentAmount){
-                                                $payment['current_rent'] = $paymentAmount;
-                                            } else {
-                                                $payment['current_rent'] = $amortizationData[$index]['balance_payment'];
-                                            }
 
-                                            echo 'current balance : ' . $amortizationData[$index]['balance_payment'] . '<br>';
-                                            echo ' - last  balance : ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
+                            echo 'final current amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
-                                            $amortizationData[$index]['balance_payment'] -= abs($paymentAmount);
-                                            if($amortizationData[$index]['balance_payment'] < 0) {
-                                                echo 'balance payment is less than 0 (' . $amortizationData[$index]['balance_payment'] . ') <br>';
-                                                $payment['future_rent'] = abs($amortizationData[$index]['balance_payment']);
-                                                $remainingAmount = abs($amortizationData[$index]['balance_payment']);
-                                                $i = $index + 1;
-                                                // Loop through subsequent payments until we've distributed the full amount
-                                                while ($remainingAmount > 0 && isset($amortizationData[$i])) {
-                                                    // Calculate how much we can deduct from this payment
-                                                    $deductible = min($remainingAmount, $amortizationData[$i]['balance_payment']);
-                                                    echo 'reducing from ' .  $amortizationData[$i]['balance_payment'] . ' by ' . $deductible . '<br>';
-                                                    // Reduce both the current payment and the remaining amount
-                                                    $amortizationData[$i]['balance_payment'] -= $deductible;
-                                                    $remainingAmount -= $deductible;
-                                                    echo $amortizationData[$i]['balance_payment'] . '<br>';
-                                                    $i++;
+                        } else {
+
+                            $lastPaymentDue = '';
+                            $lastPaidOn = '';
+                            // var_dump($filteredPayments);
+                            if($filteredPayments){
+                                echo 'Payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
+                                foreach ($filteredPayments as $key => &$payment) {
+                                    $paymentDate = Carbon::parse($payment['payment_date']);
+                                    $paymentAmount = $payment['payment_amount'];
+                                    $deductableamount = $paymentAmount;
+                                    $deductableamountBreakDown = $paymentAmount;
+
+                                    echo 'Payment Date: ' . $paymentDate->toDateString() . ' - Amount: ' . $paymentAmount . '<br>';
+                                    echo 'allocated ? ' . $payment['allocated'] . '<br>';
+
+                                    if($payment['allocated'] == 0){
+                                        $lastPaymentDue = $lastPaidOn ?: $amortizationData[$index - 1]['due_date'];
+                                        $arrearsDays = abs($paymentDate->diffInDays($lastPaymentDue, false));
+                                        //var_dump($payment);
+                                        if($amortizationData[$index - 1]['balance_payment'] > 0){
+                                            if($arrearsDays >= 1){
+                                                $lastbalanceArrearsInt = round($amortizationData[$index - 1]['balance_payment']*abs($arrearsDays)*$contractDefIntRate/100, 2);
+
+                                                if($lastbalanceArrearsInt > $paymentAmount){
+                                                    $payment['overdue_interest'] = $lastbalanceArrearsInt;
                                                 }
-                                                // $amortizationData[$index + 1]['balance_payment'] -= abs($amortizationData[$index]['balance_payment']);
-                                                // $payment['future_rent'] = abs($amortizationData[$index]['balance_payment']);
-                                                $amortizationData[$index]['balance_payment'] = 0;
+                                                $amortizationData[$index - 1]['overdue_int'] += $lastbalanceArrearsInt;
+                                                $payment['overdue_interest'] =  $lastbalanceArrearsInt;
+                                                $deductableamountBreakDown -= $lastbalanceArrearsInt;
+
+                                                var_dump($deductableamountBreakDown);
+                                                if($deductableamountBreakDown < $amortizationData[$index - 1]['balance_payment']){
+                                                    echo 'not full paymnt ' . $deductableamountBreakDown . '<br>';
+                                                    $payment['overdue_rent'] = abs($deductableamountBreakDown);
+                                                } else{
+                                                    $payment['overdue_rent'] = $amortizationData[$index - 1]['balance_payment'];
+                                                }
+
+                                                $deductableamount -= $amortizationData[$index - 1]['overdue_int'];
+                                                if($deductableamount < 0){
+                                                    $amortizationData[$index - 1]['overdue_int'] = abs($deductableamount);
+                                                } else {
+                                                    $amortizationData[$index - 1]['overdue_int'] = 0;
+                                                    $amortizationData[$index - 1]['balance_payment'] -= $deductableamount;
+                                                    if($amortizationData[$index - 1]['balance_payment'] < 0) {
+                                                        $amortizationData[$index]['balance_payment'] -= abs($amortizationData[$index - 1]['balance_payment']);
+                                                        $payment['future_rent'] = abs($amortizationData[$index - 1]['balance_payment']);
+                                                        $amortizationData[$index - 1]['balance_payment'] = 0;
+                                                    }
+                                                }
+                                                echo 'last payment arr: ' . $amortizationData[$index - 1]['balance_payment']  . '<br>';
+                                            }
+                                            else{
+                                                echo 'paid on time ' . $paymentAmount . '<br>';
+                                                echo 'prevbalance to pay ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
+                                                echo $amortizationData[$index]['balance_payment'] . '<br>';
+
+                                                if($amortizationData[$index - 1]['balance_payment'] > 0){
+                                                    $amortizationData[$index - 1]['balance_payment'] -= $paymentAmount;
+                                                    if($amortizationData[$index - 1]['balance_payment'] < 0) {
+                                                        $amortizationData[$index]['balance_payment'] += abs($amortizationData[$index - 1]['balance_payment']);
+                                                        $payment['future_rent'] = abs($amortizationData[$index - 1]['balance_payment']);
+                                                    } else {
+                                                        $payment['current_rent'] = $paymentAmount;
+                                                    }
+                                                }
                                             }
                                             $payment['allocated'] = 1; // Mark as allocated
+                                            echo 'final currenr amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
+                                        } else {
+                                            echo 'current ' . $amortizationData[$index]['balance_payment'] . '<br>';
+
+                                            if($payment){
+                                                echo 'allocated ? ' . $payment['allocated'] . '<br>';
+                                                if($payment['allocated'] == 1){
+                                                    echo 'allocated ' . $payment['pymnt_id'] . '<br>';
+                                                    continue; // Skip already allocated payments
+                                                } else {
+                                                    echo 'not allocated ' . $payment['payment_amount'] . '<br>';
+                                                    if($amortizationData[$index]['balance_payment'] > $paymentAmount){
+                                                        $payment['current_rent'] = $paymentAmount;
+                                                    } else {
+                                                        $payment['current_rent'] = $amortizationData[$index]['balance_payment'];
+                                                    }
+
+                                                    echo 'current balance : ' . $amortizationData[$index]['balance_payment'] . '<br>';
+                                                    echo ' - last  balance : ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
+
+                                                    $amortizationData[$index]['balance_payment'] -= abs($paymentAmount);
+                                                    if($amortizationData[$index]['balance_payment'] < 0) {
+                                                        echo 'balance payment is less than 0 (' . $amortizationData[$index]['balance_payment'] . ') <br>';
+                                                        $payment['future_rent'] = abs($amortizationData[$index]['balance_payment']);
+                                                        $remainingAmount = abs($amortizationData[$index]['balance_payment']);
+                                                        $i = $index + 1;
+                                                        // Loop through subsequent payments until we've distributed the full amount
+                                                        while ($remainingAmount > 0 && isset($amortizationData[$i])) {
+                                                            // Calculate how much we can deduct from this payment
+                                                            $deductible = min($remainingAmount, $amortizationData[$i]['balance_payment']);
+                                                            echo 'reducing from ' .  $amortizationData[$i]['balance_payment'] . ' by ' . $deductible . '<br>';
+                                                            // Reduce both the current payment and the remaining amount
+                                                            $amortizationData[$i]['balance_payment'] -= $deductible;
+                                                            $remainingAmount -= $deductible;
+                                                            echo $amortizationData[$i]['balance_payment'] . '<br>';
+                                                            $i++;
+                                                        }
+                                                        // $amortizationData[$index + 1]['balance_payment'] -= abs($amortizationData[$index]['balance_payment']);
+                                                        // $payment['future_rent'] = abs($amortizationData[$index]['balance_payment']);
+                                                        $amortizationData[$index]['balance_payment'] = 0;
+                                                    }
+                                                    $payment['allocated'] = 1; // Mark as allocated
+                                                }
+
+                                            } else {
+                                                echo 'No payment found for this due date!!!: ' . $scheduleItem['due_date'] . '<br>';
+                                                echo ' current  '. $amortizationData[$index]['balance_payment'] . '<br>';
+                                                continue;
+                                            }
+
                                         }
 
-                                    } else {
-                                        echo 'No payment found for this due date!!!: ' . $scheduleItem['due_date'] . '<br>';
-                                        echo ' current  '. $amortizationData[$index]['balance_payment'] . '<br>';
-                                        continue;
+                                        $lastPaidOn = $paymentDate->toDateString();
+
+                                        $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
+
+                                        if ($key !== false) {
+                                            $paymentsData[$key] = $payment; // Update existing
+                                        }
                                     }
 
+
+
                                 }
-
-
-
-                                $lastPaidOn = $paymentDate->toDateString();
-
-                                $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
-
-                                if ($key !== false) {
-                                    $paymentsData[$key] = $payment; // Update existing
+                                if($amortizationData[$index - 1]['balance_payment'] > 0){
+                                    $frontArrearsDays = abs(Carbon::parse($amortizationData[$index]['due_date'])->diffInDays($lastPaidOn, false));
+                                    $amortizationData[$index]['balance_payment'] += $amortizationData[$index - 1]['balance_payment'] + round($amortizationData[$index - 1]['balance_payment']*abs($frontArrearsDays)*$contractDefIntRate/100, 2);
+                                    $amortizationData[$index - 1]['balance_payment'] = 0;
                                 }
-
                             }
-                            if($amortizationData[$index - 1]['balance_payment'] > 0){
-                                $frontArrearsDays = abs(Carbon::parse($amortizationData[$index]['due_date'])->diffInDays($lastPaidOn, false));
-                                $amortizationData[$index]['balance_payment'] += $amortizationData[$index - 1]['balance_payment'] + round($amortizationData[$index - 1]['balance_payment']*abs($frontArrearsDays)*$contractDefIntRate/100, 2);
+                            else{
+                                echo 'No payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
+                                echo 'Last balance : ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
+                                $arrearsDays = abs(Carbon::parse($amortizationData[$index]['due_date'])->diffInDays($amortizationData[$index - 1]['due_date'], false));
+                                echo 'Arrears Days: ' . $arrearsDays . '<br>';
+                                $lastbalanceArrearsInt = round($amortizationData[$index - 1]['balance_payment']*abs($arrearsDays)*$contractDefIntRate/100, 2);
+                                $amortizationData[$index]['overdue_int'] += $lastbalanceArrearsInt + $amortizationData[$index - 1]['overdue_int'];
+                                $amortizationData[$index]['balance_payment'] += $amortizationData[$index - 1]['balance_payment'];
                                 $amortizationData[$index - 1]['balance_payment'] = 0;
+                                echo 'final current amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
                             }
+                        }
 
-                        }
-                        else{
-                            echo 'No payments found for this due date: ' . $scheduleItem['due_date'] . '<br>';
-                            echo 'Last balance : ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
-                            $arrearsDays = abs(Carbon::parse($amortizationData[$index]['due_date'])->diffInDays($amortizationData[$index - 1]['due_date'], false));
-                            echo 'Arrears Days: ' . $arrearsDays . '<br>';
-                            $lastbalanceArrearsInt = round($amortizationData[$index - 1]['balance_payment']*abs($arrearsDays)*$contractDefIntRate/100, 2);
-                            $amortizationData[$index]['overdue_int'] += $lastbalanceArrearsInt + $amortizationData[$index - 1]['overdue_int'];
-                            $amortizationData[$index]['balance_payment'] += $amortizationData[$index - 1]['balance_payment'];
-                            $amortizationData[$index - 1]['balance_payment'] = 0;
-                            echo 'final current amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
-                        }
 
 
                 } else {
-
-                    echo 'Processing first amortization row (no previous payments to consider)' . '<br>';
-
-                    if ($filteredPayments) {
+                    echo 'has no prev' .'<br>';
+                    if($filteredPayments){
+                        $totalPaid = 0;
                         foreach ($filteredPayments as $key => &$payment) {
-                            echo 'Processing payment: ' . $payment['payment_amount'] . '<br>';
-                            echo 'Current amortization balance: ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
-                            // Initialize tracking fields
-                            $payment['current_rent'] = 0;
-                            $payment['future_rent'] = 0;
+                            echo $payment['payment_amount'] . '<br>';
+                            echo 'current balance : ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
-                            $paymentAmount = $payment['payment_amount'];
-                            $currentIndex = $index; // Start with current amortization row
+                            $totalPaid += $payment['payment_amount'];
 
-                            // Continue allocating until payment is fully used or no more amortization rows
-                            while ($paymentAmount > 0 && isset($amortizationData[$currentIndex])) {
-                                $currentBalance = &$amortizationData[$currentIndex]['balance_payment'];
+                            echo 'total paid so far: ' . $totalPaid . '<br>';
 
-                                // For the first row, track as current_rent
-                                if ($currentIndex === $index) {
-                                    if ($paymentAmount >= $currentBalance && $currentBalance > 0) {
-                                        // Full payment covers this row's balance
-                                        $payment['current_rent'] = $currentBalance;
-                                        $paymentAmount -= $currentBalance;
-                                        $currentBalance = 0;
 
-                                        echo "  - Applied {$payment['current_rent']} to current rent<br>";
-
-                                        // If payment has remaining, it will continue to next row in loop
-                                    } elseif ($paymentAmount < $currentBalance && $paymentAmount > 0) {
-                                        // Partial payment to current row
-                                        $payment['current_rent'] = $paymentAmount;
-                                        $currentBalance -= $paymentAmount;
-                                        $paymentAmount = 0;
-
-                                        echo "  - Applied {$payment['current_rent']} to current rent (partial)<br>";
-                                    } elseif ($currentBalance <= 0) {
-                                        // Current row already paid, skip to next
-                                        echo "  - Skipping row {$currentIndex} (already paid)<br>";
-                                    }
-                                }
-                                // For subsequent rows, track as future_rent
-                                else {
-                                    if ($paymentAmount >= $currentBalance && $currentBalance > 0) {
-                                        // Apply to this future row
-                                        $appliedAmount = $currentBalance;
-                                        $payment['future_rent'] += $appliedAmount;
-                                        $paymentAmount -= $appliedAmount;
-                                        $currentBalance = 0;
-
-                                        echo "  - Applied {$appliedAmount} to future row {$currentIndex}<br>";
-                                    } elseif ($paymentAmount < $currentBalance && $paymentAmount > 0) {
-                                        // Partial application to future row
-                                        $payment['future_rent'] += $paymentAmount;
-                                        $currentBalance -= $paymentAmount;
-                                        $paymentAmount = 0;
-
-                                        echo "  - Applied {$paymentAmount} to future row {$currentIndex} (partial)<br>";
-                                    } elseif ($currentBalance <= 0) {
-                                        // This future row already paid, skip to next
-                                        echo "  - Skipping future row {$currentIndex} (already paid)<br>";
-                                    }
-                                }
-
-                                // Move to next amortization row if payment still has remaining amount
-                                if ($paymentAmount > 0) {
-                                    $currentIndex++;
-                                }
-                            }
-
-                            // If payment still has remaining after all amortization rows
-                            if ($paymentAmount > 0) {
-                                echo "  - Warning: {$paymentAmount} could not be allocated (no more amortization rows)<br>";
-                                $payment['unallocated'] = $paymentAmount;
-                            }
-
-                            // Update payment in original array
-                            $originalKey = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
-                            if ($originalKey !== false) {
-                                $paymentsData[$originalKey] = $payment;
-                            }
-
-                            echo '<br>';
                         }
+                        $amortizationData[$index]['balance_payment'] -= $totalPaid;
+                        if($amortizationData[$index]['balance_payment'] < 0) {
+                            echo 'extra : ' . abs($amortizationData[$index]['balance_payment']) . '<br>';
+                            $amortizationData[$index + 1]['balance_payment'] -= abs($amortizationData[$index]['balance_payment']);
+                            $amortizationData[$index]['balance_payment'] = 0;
+                        }
+                        $payment['allocated'] = 1; // Mark as allocated
+
+                        $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
+
+                        if ($key !== false) {
+                            $paymentsData[$key] = $payment; // Update existing
+                        }
+
+                        //var_dump($paymentsData);
+
                     }
-
-                    echo 'Moving to next amortization row...<br>';
-                    continue;
-
                 }
 
             }
 
-
         }
+
         unset($scheduleItem); // Unset reference to avoid accidental modifications
 
         // Handle payments after the LAST amortization due date
