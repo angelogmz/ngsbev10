@@ -109,7 +109,7 @@ class PaymentAllocationController extends Controller
 
     public function allocatePayments($contract_no){
     // Add CORS headers for testing
-    //header('Access-Control-Allow-Origin: http://localhost:5173');
+    // header('Access-Control-Allow-Origin: http://localhost:5173');
     // header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
     // header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
@@ -215,8 +215,11 @@ class PaymentAllocationController extends Controller
                                 $amortizationData[$index]['balance_payment'] -= $totalPaidV;
                                 echo 'BBBBBBBBBBBB total paid ' . $amortizationData[$index]['balance_payment'] .'<br>';
 
+
                                 foreach ($filteredPayments as &$payment) {
                                     $payment['allocated'] = 1;
+                                    //$payment['future_rent'] = $payment['payment_amount'];
+                                    //var_dump($payment);
                                 }
                             };
 
@@ -231,6 +234,15 @@ class PaymentAllocationController extends Controller
                                 }
                             }
 
+                            $payment['current_interest'] = $amortizationData[$index]['current_interest'];
+                            $payment['current_rent'] = $amortizationData[$index]['current_rent'];
+                            $payment['future_rent'] = $payment['payment_amount'];
+
+                            $key = array_search($payment['pymnt_id'], array_column($paymentsData, 'pymnt_id'));
+
+                            if ($key !== false) {
+                                $paymentsData[$key] = $payment; // Update existing
+                            }
 
                             echo 'final current amoort ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
@@ -308,17 +320,24 @@ class PaymentAllocationController extends Controller
                                             echo 'current ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
                                             if($payment){
+                                                $breakableVal = $paymentAmount;
                                                 echo 'allocated ? ' . $payment['allocated'] . '<br>';
                                                 if($payment['allocated'] == 1){
                                                     echo 'allocated ' . $payment['pymnt_id'] . '<br>';
                                                     continue; // Skip already allocated payments
                                                 } else {
                                                     echo 'not allocated ' . $payment['payment_amount'] . '<br>';
-                                                    if($amortizationData[$index]['balance_payment'] > $paymentAmount){
-                                                        $payment['current_rent'] = $paymentAmount;
+                                                    // Determine the maximum rent that can be allocated
+
+                                                    $payment['current_interest'] = min($breakableVal, $amortizationData[$index]['current_interest']);
+                                                    $breakableVal -= $payment['current_interest'];
+
+                                                    // Only allocate rent if interest was fully covered
+                                                    if ($payment['current_interest'] == $amortizationData[$index]['current_interest']) {
+                                                        $payment['current_rent'] = min($breakableVal, $amortizationData[$index]['current_rent']);
                                                     } else {
-                                                        $payment['current_rent'] = $amortizationData[$index]['balance_payment'];
-                                                    }
+                                                        $payment['current_rent'] = 0;
+}
 
                                                     echo 'current balance : ' . $amortizationData[$index]['balance_payment'] . '<br>';
                                                     echo ' - last  balance : ' . $amortizationData[$index - 1]['balance_payment'] . '<br>';
@@ -394,6 +413,34 @@ class PaymentAllocationController extends Controller
                         $totalPaid = 0;
                         foreach ($filteredPayments as $key => &$payment) {
 
+                            $breakableAmount = $payment['payment_amount'];
+                            $breakCurrentRent = 0;
+                            $breakCurrentInt = 0;
+                            $amortCurInt = $amortizationData[$index]['current_interest'];
+                            $amortCurRent = $amortizationData[$index]['current_rent'];
+
+                            if($breakableAmount > 0){
+                                if($breakableAmount >= $amortCurInt){
+                                    $breakCurrentInt = $amortCurInt;
+                                    $breakableAmount -= $amortCurInt;
+                                } else {
+                                    $breakCurrentInt = $breakableAmount;
+                                    $breakableAmount = 0;
+                                }
+
+                                if($breakableAmount >= $amortCurRent){
+                                    $breakCurrentRent = $amortCurRent;
+                                    $breakableAmount -= $amortCurRent;
+                                } else {
+                                    $breakCurrentRent = $breakableAmount;
+                                    $breakableAmount = 0;
+                                }
+                            }
+
+                            $payment['current_interest'] = $breakCurrentInt;
+                            $payment['current_rent'] = $breakCurrentRent;
+
+
                             echo $payment['payment_amount'] . '<br>';
                             echo 'current balance : ' . $amortizationData[$index]['balance_payment'] . '<br>';
 
@@ -406,6 +453,7 @@ class PaymentAllocationController extends Controller
                         $amortizationData[$index]['balance_payment'] -= $totalPaid;
                         if($amortizationData[$index]['balance_payment'] < 0) {
                             echo 'extra : ' . abs($amortizationData[$index]['balance_payment']) . '<br>';
+                            $payment['future_rent'] += abs($amortizationData[$index]['balance_payment']);
                             $amortizationData[$index + 1]['balance_payment'] -= abs($amortizationData[$index]['balance_payment']);
                             $amortizationData[$index]['balance_payment'] = 0;
                         }
