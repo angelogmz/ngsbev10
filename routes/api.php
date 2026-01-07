@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\GuarantorController;
 use App\Http\Controllers\Api\AmortizationController;
 use App\Http\Controllers\Api\PaymentAllocationController;
 use App\Http\Controllers\Api\PaymentUuidController;
+use App\Http\Controllers\Api\BatchPaymentAllocationController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -83,7 +85,7 @@ Route::group([
 
     Route::post('contracts/add', [ContractController::class, 'addContract']);
 
-    Route::get('contracts/{id}', [ContractController::class, 'editContract']);
+    //Route::get('contracts/{id}', [ContractController::class, 'editContract']);
 
     Route::put('contracts/{id}/edit', [ContractController::class, 'updateContract']);
 
@@ -91,11 +93,18 @@ Route::group([
 
     Route::get('contracts/searchbyuser/{userNameVal}', [ContractController::class, 'findContractEndingWith']);
 
+    Route::get('contracts/date-range/', [ContractController::class, 'findContractsInDateRangeQuery']);
+
     //Amortization
     Route::get('/amortization-schedule/{contractNo}', [AmortizationController::class, 'getAmortizationSchedule']);
 
     //UUID
     Route::post('payments/add-uuids', [PaymentUuidController::class, 'addUuids']);
+
+    //Batch Payment Allocation
+    Route::prefix('batch-payments')->group(function () {
+        Route::post('/allocate-all', [BatchPaymentAllocationController::class, 'allocateAllContracts']);
+    });
 
 
 });

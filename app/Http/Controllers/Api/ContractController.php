@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Services\AmortizationService;
 use App\Services\PaymentBreakdownService;
 use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 
 
 class ContractController extends Controller
@@ -290,4 +291,47 @@ class ContractController extends Controller
             'message' => 'Customers removed from contract successfully'
         ], 200);
     }
+
+    //Find Contrancts in a Date Range
+    /**
+     * GET /api/contracts/date-range?start_date=2024-01-01&end_date=2024-12-31
+     */
+    public function findContractsInDateRangeQuery(Request $request)
+    {
+
+        // Set default to current month if not provided
+        $start_date = $request->input('start_date', now()->startOfMonth()->format('Y-m-d'));
+        $end_date = $request->input('end_date', now()->endOfMonth()->format('Y-m-d'));
+
+        $validator = Validator::make([
+            'start_date' => $start_date,
+            'end_date' => $end_date
+        ], [
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 422,
+                'errors' => $validator->messages()
+            ], 422);
+        }
+
+        $startDate = Carbon::parse($request->input('start_date'))->startOfDay();
+        $endDate = Carbon::parse($request->input('end_date'))->endOfDay();
+
+        $contracts = Contract::whereBetween('loan_execution_date', [$startDate, $endDate])->get();
+
+        return response()->json([
+            'status' => 200,
+            'contracts' => $contracts,
+            'date_range' => [
+                'start_date' => $request->input('start_date'),
+                'end_date' => $request->input('end_date'),
+            ],
+            'count' => $contracts->count()
+        ], 200);
+    }
+
 }
