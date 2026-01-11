@@ -82,52 +82,50 @@ class PaymentBreakdownService
      */
     public function refreshPaymentBreakdown(string $contractNo): array
     {
-        // Get all payments for the contract
         $allPayments = Payment::where('contract_no', $contractNo)
             ->orderBy('payment_date')
-            ->get(['pymnt_id', 'contract_no','payment_amount','payment_date']);
+            ->get(['pymnt_id', 'contract_no', 'payment_amount', 'payment_date']);
 
-
-        // Fields to reset to 0
         $zeroFields = [
             'overdue_interest' => 0,
             'overdue_rent' => 0,
             'current_interest' => 0,
             'current_rent' => 0,
             'future_rent' => 0,
-            'excess' => 0
+            'excess' => 0,
         ];
 
-        $results = [];
+        DB::transaction(function () use ($allPayments, $contractNo, $zeroFields) {
 
-        DB::transaction(function() use ($allPayments, $contractNo, $zeroFields, &$results) {
             foreach ($allPayments as $payment) {
-                // Update or create the record
 
-                $breakdown = PaymentBreakdown::updateOrCreate(
+                $breakdown = PaymentBreakdown::firstOrCreate(
                     [
-                        'pymnt_id' => $payment->pymnt_id,
-                        'contract_no' => $contractNo
+                        'pymnt_id'    => $payment->pymnt_id,
+                        'contract_no' => $contractNo,
                     ],
                     array_merge([
                         'payment_amount' => $payment->payment_amount,
-                        'payment_date' => Carbon::parse($payment->payment_date)->format('Y-m-d')
+                        'payment_date'   => Carbon::parse($payment->payment_date)->format('Y-m-d'),
                     ], $zeroFields)
                 );
 
-                //var_dump($breakdown->toArray());
-                $results[$payment->id] = $breakdown->toArray();
+                // If it already exists, just ensure base fields are in sync
+                if (! $breakdown->wasRecentlyCreated) {
+                    $breakdown->update([
+                        'payment_amount' => $payment->payment_amount,
+                        'payment_date'   => Carbon::parse($payment->payment_date)->format('Y-m-d'),
+                    ]);
+                }
             }
         });
 
-        // Get ALL payment breakdowns for this contract (not just the ones we updated)
-        $allBreakdowns = PaymentBreakdown::where('contract_no', $contractNo)
+        return PaymentBreakdown::where('contract_no', $contractNo)
             ->get()
             ->keyBy('pymnt_id')
             ->toArray();
-
-        return $allBreakdowns;
     }
+
 
     public function filterMissingBreakdowns(string $contractNo): array{
         // Get all payment IDs from Payments table
