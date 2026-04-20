@@ -123,8 +123,8 @@ class PaymentAllocationService
             $contrExecutionDate = $data->execution_date;
 
 
-            // PaymentBreakdown::truncate();
-            // MasterAmortization::truncate();
+            PaymentBreakdown::truncate();
+            MasterAmortization::truncate();
 
             // Delete records for specific contract instead of truncating
             //PaymentBreakdown::where('contract_no', $contract_no)->delete();
