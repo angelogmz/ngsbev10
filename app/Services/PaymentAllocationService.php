@@ -101,7 +101,7 @@ class PaymentAllocationService
         } else {
             return response()->json([
                 'completed' => 404,
-                'message' => 'No payment breakdowns found for this contract.'
+                'message' => 'PA service - No payment breakdowns found for this contract.'
             ], 404);
         }
     }
