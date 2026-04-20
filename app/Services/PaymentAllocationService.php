@@ -112,7 +112,7 @@ class PaymentAllocationService
     // header('Access-Control-Allow-Origin: http://localhost:5173');
     // header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
     // header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-        try {
+        /*try {
             $contractDetails = $this->getContractDetails($contract_no);
 
             // Decode the JSON content
@@ -494,7 +494,7 @@ class PaymentAllocationService
         } catch (\Exception $e) {
             // Log error and skip
             return "Failed to allocate payments for contract {$contract_no}: " . $e->getMessage();
-        }
+        }*/
     }
 
 }
