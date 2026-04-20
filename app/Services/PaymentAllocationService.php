@@ -127,8 +127,8 @@ class PaymentAllocationService
             // MasterAmortization::truncate();
 
             // Delete records for specific contract instead of truncating
-            PaymentBreakdown::where('contract_no', $contract_no)->delete();
-            MasterAmortization::where('contract_no', $contract_no)->delete();
+            //PaymentBreakdown::where('contract_no', $contract_no)->delete();
+            //MasterAmortization::where('contract_no', $contract_no)->delete();
 
             $this->paymentBreakdownService->refreshPaymentBreakdown($contract_no);
             $this->amortizationService->getOrGenerateAmortizationSchedule($contract_no);
