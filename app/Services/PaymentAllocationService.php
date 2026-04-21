@@ -363,6 +363,7 @@ class PaymentAllocationService
                         }
                     }
 
+
                     for ($i = 0; $i < $rowCount; $i++) {
                         $currentRow = $pendingRowsList[$i];
                         $nextRow = $pendingRowsList[$i + 1] ?? null;
@@ -372,14 +373,26 @@ class PaymentAllocationService
 
                         if ($nextRow) {
                             // Calculate days diff between current row and NEXT row
-                            $currentTimestamp = strtotime($currentRow['due_date']);
+
+                            // Use lastPaidDate if available and more recent than current due date
+                            $startTimestamp = strtotime($currentRow['due_date']);
+                            if(isset($lastPaidDate)){
+                                $lastPaidTimestamp = strtotime($lastPaidDate);
+                            }
+
+                            // If last paid date is after current due date, use last paid date as start
+                            if (isset($lastPaidDate) && $lastPaidTimestamp > $startTimestamp) {
+                                $startTimestamp = $lastPaidTimestamp;
+                            }
+
                             $nextTimestamp = strtotime($nextRow['due_date']);
-                            $daysDiff = floor(($nextTimestamp - $currentTimestamp) / (60 * 60 * 24));
+                            $daysDiff = floor(($nextTimestamp - $startTimestamp) / (60 * 60 * 24));
 
                             $overdue_int = ($contractDefIntRate * $daysDiff * $currentRow['balance_payment']) / 100;
 
                             // Save overdue_int to amortization
                             $amortizationData[$index]['overdue_int'] = $overdue_int;
+
 
                             // Add overdue_int to balance_payment
                             //$amortizationData[$index]['balance_payment'] += $overdue_int;
@@ -397,7 +410,7 @@ class PaymentAllocationService
                                 $amortizationData[$index]['overdue_int'] = $overdue_int;
 
                                 // Add overdue_int to last row's balance_payment
-                                $amortizationData[$index]['balance_payment'] += $overdue_int;
+                                //$amortizationData[$index]['balance_payment'] = $overdue_int;
                             }
                         }
                     }
@@ -424,6 +437,9 @@ class PaymentAllocationService
 
                     // SECOND: Apply remaining payment to overdue_rent (principal) for each row
                     if ($remainingPayment > 0) {
+
+                    //echo ' $remainingPayment  ' . $remainingPayment;
+
                         foreach ($pendingRowsList as $row) {
                             if ($remainingPayment <= 0) break;
 
@@ -476,6 +492,8 @@ class PaymentAllocationService
                         }
                     }
                 }
+
+                $lastPaidDate = $paymentDate;
             }
 
             // Update master_amortization table
