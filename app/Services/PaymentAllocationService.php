@@ -108,19 +108,11 @@ class PaymentAllocationService
 
 
     public function allocatePayments($contract_no){
-        // Handle preflight OPTIONS request
-        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-            header('Access-Control-Allow-Origin: *');
-            header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-            header('Access-Control-Allow-Headers: Content-Type, X-CSRF-TOKEN, Authorization');
-            header('Access-Control-Max-Age: 86400');
-            exit(0);
-        }
-
-        // Set CORS headers for actual request
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, X-CSRF-TOKEN, Authorization');
+        // TEST
+        //Add CORS headers for testing
+        // header('Access-Control-Allow-Origin: http://localhost:5173');
+        // header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+        // header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
         try {
             $contractDetails = $this->getContractDetails($contract_no);
@@ -195,8 +187,12 @@ class PaymentAllocationService
                 });
 
                 // Sort by due_date using Carbon
+                // usort($pendingRows, function($a, $b) {
+                //     return Carbon::parse($a['due_date'])->gte(Carbon::parse($b['due_date']));
+                // });
+
                 usort($pendingRows, function($a, $b) {
-                    return Carbon::parse($a['due_date'])->gte(Carbon::parse($b['due_date']));
+                    return strtotime($a['due_date']) - strtotime($b['due_date']);
                 });
 
                 $pendingRowsList = array_values($pendingRows);
