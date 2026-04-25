@@ -356,73 +356,181 @@ class PaymentAllocationService
 
                     // First, calculate sum of all balance_payments
                     $totalBalanceSum = 0;
-                    foreach ($pendingRowsList as $row) {
-                        $rowIndex = array_search($row['id'], array_column($amortizationData, 'id'));
-                        if ($rowIndex !== false) {
-                            $totalBalanceSum += $amortizationData[$rowIndex]['balance_payment'];
+                    echo $rowCount . "\n";
+
+                    if ($rowCount <= 2){
+                        foreach ($pendingRowsList as $row) {
+                            $rowIndex = array_search($row['id'], array_column($amortizationData, 'id'));
+                            if ($rowIndex !== false) {
+                                $totalBalanceSum += $amortizationData[$rowIndex]['balance_payment'];
+                            }
                         }
-                    }
 
+                        for ($i = 0; $i < $rowCount; $i++) {
+                            $currentRow = $pendingRowsList[$i];
+                            $nextRow = $pendingRowsList[$i + 1] ?? null;
 
-                    for ($i = 0; $i < $rowCount; $i++) {
-                        $currentRow = $pendingRowsList[$i];
-                        $nextRow = $pendingRowsList[$i + 1] ?? null;
+                            $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                            if ($index === false) continue;
 
-                        $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
-                        if ($index === false) continue;
+                            if ($nextRow) {
+                                $startTimestamp = strtotime($currentRow['due_date']);
+                                if(isset($lastPaidDate)){
+                                    $lastPaidTimestamp = strtotime($lastPaidDate);
+                                }
 
-                        if ($nextRow) {
-                            // Calculate days diff between current row and NEXT row
+                                if (isset($lastPaidDate) && $lastPaidTimestamp > $startTimestamp) {
+                                    $startTimestamp = $lastPaidTimestamp;
+                                }
 
-                            // Use lastPaidDate if available and more recent than current due date
-                            $startTimestamp = strtotime($currentRow['due_date']);
-                            if(isset($lastPaidDate)){
-                                $lastPaidTimestamp = strtotime($lastPaidDate);
-                            }
+                                $nextTimestamp = strtotime($nextRow['due_date']);
+                                $daysDiff = floor(($nextTimestamp - $startTimestamp) / (60 * 60 * 24));
 
-                            // If last paid date is after current due date, use last paid date as start
-                            if (isset($lastPaidDate) && $lastPaidTimestamp > $startTimestamp) {
-                                $startTimestamp = $lastPaidTimestamp;
-                            }
-
-                            $nextTimestamp = strtotime($nextRow['due_date']);
-                            $daysDiff = floor(($nextTimestamp - $startTimestamp) / (60 * 60 * 24));
-
-                            $overdue_int = ($contractDefIntRate * $daysDiff * $currentRow['balance_payment']) / 100;
-
-                            // Save overdue_int to amortization
-                            $amortizationData[$index]['overdue_int'] = $overdue_int;
-
-
-                            // Add overdue_int to balance_payment
-                            //$amortizationData[$index]['balance_payment'] += $overdue_int;
-                        } else {
-                            // LAST ROW - Use total sum of all balance_payments
-                            $currentTimestamp = strtotime($currentRow['due_date']);
-                            $paymentTimestamp = strtotime($paymentDate);
-                            $daysDiff = floor(($paymentTimestamp - $currentTimestamp) / (60 * 60 * 24));
-
-                            if ($daysDiff > 0) {
-                                // Use TOTAL sum for calculation
-                                $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
-
-                                // Save overdue_int to amortization
+                                $overdue_int = ($contractDefIntRate * $daysDiff * $currentRow['balance_payment']) / 100;
                                 $amortizationData[$index]['overdue_int'] = $overdue_int;
+                            } else {
+                                $currentTimestamp = strtotime($currentRow['due_date']);
+                                $paymentTimestamp = strtotime($paymentDate);
+                                $daysDiff = floor(($paymentTimestamp - $currentTimestamp) / (60 * 60 * 24));
 
-                                // Add overdue_int to last row's balance_payment
-                                //$amortizationData[$index]['balance_payment'] = $overdue_int;
+                                if ($daysDiff > 0) {
+                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                    $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                }
+                            }
+                        }
+
+                        $totalOverdueInterest = 0;
+                        foreach ($pendingRowsList as $row) {
+                            $index = array_search($row['id'], array_column($amortizationData, 'id'));
+                            if ($index !== false) {
+                                $totalOverdueInterest += $amortizationData[$index]['overdue_int'];
+                            }
+                        }
+                    } else if ($rowCount > 2){
+                        for ($i = 0; $i < $rowCount; $i++) {
+                            $currentRow = $pendingRowsList[$i];
+                            $nextRow = $pendingRowsList[$i + 1] ?? null;
+                            $nexttoNextRow = $pendingRowsList[$i + 2] ?? null;
+                            $currentTimestamp = strtotime($currentRow['due_date']);
+
+                            if ($nextRow) {
+                                echo $currentRow['balance_payment'] . "\n";
+                                $nextTimestamp = strtotime($nextRow['due_date']);
+
+                                if ($nexttoNextRow) {
+                                    $nextToNextTimestamp = strtotime($nexttoNextRow['due_date']);
+
+                                    $paymentAfterNext = array_filter($paymentsData, function($payment) use ($nextTimestamp, $nextToNextTimestamp) {
+                                        $paymentTimestamp = strtotime($payment['payment_date']);
+                                        return $paymentTimestamp > $nextTimestamp && $paymentTimestamp < $nextToNextTimestamp;
+                                    });
+
+                                    if (!empty($paymentAfterNext)) {
+                                        $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                                        if ($index !== false) {
+                                            $amortizationData[$index]['overdue_int'] = 0;
+                                        }
+                                        continue;
+                                    } else if(empty($paymentAfterNext)){
+                                        $paymentsTillNext = array_filter($paymentsData, function($payment) use ($currentTimestamp, $nextTimestamp) {
+                                            $paymentTimestamp = strtotime($payment['payment_date']);
+                                            return $paymentTimestamp > $currentTimestamp && $paymentTimestamp < $nextTimestamp;
+                                        });
+
+                                        $totalBalanceSum = 0;
+                                        for ($j = 0; $j <= $i; $j++) {
+                                            $prevRow = $pendingRowsList[$j];
+                                            $prevIndex = array_search($prevRow['id'], array_column($amortizationData, 'id'));
+                                            if ($prevIndex !== false) {
+                                                $totalBalanceSum += $amortizationData[$prevIndex]['balance_payment'];
+                                            }
+                                        }
+
+                                        if (!empty($paymentsTillNext)) {
+                                            $lastPayment = max($paymentsTillNext);
+                                            $lastPaymentTimestamp = strtotime($lastPayment['payment_date']);
+                                            $daysDiff = floor(($nextTimestamp - $lastPaymentTimestamp) / 86400);
+                                        } else {
+                                            $daysDiff = floor(($nextTimestamp - $currentTimestamp) / 86400);
+                                        }
+
+                                        $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                        $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                                        if ($index !== false) {
+                                            $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                        }
+                                    }
+                                } else {
+                                    $paymentsBetween = array_filter($paymentsData, function($payment) use ($currentTimestamp, $nextTimestamp) {
+                                        $paymentTimestamp = strtotime($payment['payment_date']);
+                                        return $paymentTimestamp > $currentTimestamp && $paymentTimestamp < $nextTimestamp;
+                                    });
+
+                                    $totalBalanceSum = 0;
+                                    for ($j = 0; $j <= $i; $j++) {
+                                        $prevRow = $pendingRowsList[$j];
+                                        $prevIndex = array_search($prevRow['id'], array_column($amortizationData, 'id'));
+                                        if ($prevIndex !== false) {
+                                            $totalBalanceSum += $amortizationData[$prevIndex]['balance_payment'];
+                                        }
+                                    }
+
+                                    if (!empty($paymentsBetween)) {
+                                        $lastPayment = max($paymentsBetween);
+                                        $lastPaymentTimestamp = strtotime($lastPayment['payment_date']);
+                                        $daysDiff = floor(($nextTimestamp - $lastPaymentTimestamp) / 86400);
+                                    } else {
+                                        $daysDiff = floor(($nextTimestamp - $currentTimestamp) / 86400);
+                                    }
+
+                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                    $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                                    if ($index !== false) {
+                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    }
+                                }
+                            } else {
+                                // FINAL ROW
+                                $currentTimestamp = strtotime($currentRow['due_date']);
+                                $paymentTimestamp = strtotime($paymentDate);
+
+                                // Sum all previous rows' balances up to current row (including current)
+                                $totalBalanceSum = 0;
+                                for ($j = 0; $j <= $i; $j++) {
+                                    $prevRow = $pendingRowsList[$j];
+                                    $prevIndex = array_search($prevRow['id'], array_column($amortizationData, 'id'));
+                                    if ($prevIndex !== false) {
+                                        $totalBalanceSum += $amortizationData[$prevIndex]['balance_payment'];
+                                    }
+                                }
+
+                                // Calculate days difference between current due date and payment date
+                                $daysDiff = floor(($paymentTimestamp - $currentTimestamp) / (60 * 60 * 24));
+
+                                if ($daysDiff > 0) {
+                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+
+                                    $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                                    if ($index !== false) {
+                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    }
+                                } else {
+                                    $amortizationData[$index]['overdue_int'] = 0;
+                                }
+                            }
+                        }
+                        $totalOverdueInterest = 0;
+                        foreach ($pendingRowsList as $row) {
+                            $index = array_search($row['id'], array_column($amortizationData, 'id'));
+                            if ($index !== false) {
+                                $totalOverdueInterest += $amortizationData[$index]['overdue_int'];
                             }
                         }
                     }
 
-                    // Calculate total overdue interest that needs to be paid
-                    $totalOverdueInterest = 0;
-                    foreach ($pendingRowsList as $row) {
-                        $index = array_search($row['id'], array_column($amortizationData, 'id'));
-                        if ($index !== false) {
-                            $totalOverdueInterest += $amortizationData[$index]['overdue_int'];
-                        }
-                    }
+                    echo "totalOverdueInterest: " . $totalOverdueInterest . "\n";
+
 
                     // FIRST: Pay overdue_interest from the payment
                     $paidInterest = 0;
