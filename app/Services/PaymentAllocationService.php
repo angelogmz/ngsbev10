@@ -122,8 +122,8 @@ class PaymentAllocationService
             $contractDefIntRate = $data->def_int_rate;
             $contrExecutionDate = $data->execution_date;
 
-            PaymentBreakdown::truncate();
-            MasterAmortization::truncate();
+            //PaymentBreakdown::truncate();
+            //MasterAmortization::truncate();
 
             $this->paymentBreakdownService->refreshPaymentBreakdown($contract_no);
             $this->amortizationService->getOrGenerateAmortizationSchedule($contract_no);

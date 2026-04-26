@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\AmortizationController;
 use App\Http\Controllers\Api\PaymentAllocationController;
 use App\Http\Controllers\Api\PaymentUuidController;
 use App\Http\Controllers\Api\BatchPaymentAllocationController;
+use App\Http\Controllers\Api\OverdueReportController;
+
 
 
 /*
@@ -105,6 +107,10 @@ Route::group([
     Route::prefix('batch-payments')->group(function () {
         Route::post('/allocate-all', [BatchPaymentAllocationController::class, 'allocateAllContracts']);
     });
+
+    //Overdue Report
+    Route::get('/export-overdue-contracts', [OverdueReportController::class, 'exportOverdueContracts']);
+
 
 
 });

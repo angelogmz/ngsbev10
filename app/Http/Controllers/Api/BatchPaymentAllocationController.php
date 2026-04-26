@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\PaymentAllocationService;
 use App\Models\Contract;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class BatchPaymentAllocationController extends Controller
@@ -37,7 +36,16 @@ class BatchPaymentAllocationController extends Controller
                 $this->service->truncateAllData();
             }
         } catch (\Exception $e) {
-            //Log::warning("Truncate skipped: " . $e->getMessage());
+            // Return error immediately so you can see it in API
+            return response()->json([
+                'success' => false,
+                'message' => 'Truncate failed: ' . $e->getMessage(),
+                'error_details' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            ], 500);
         }
 
         // Get total contracts count first
@@ -45,10 +53,14 @@ class BatchPaymentAllocationController extends Controller
         try {
             $totalContracts = Contract::count();
         } catch (\Exception $e) {
-            Log::error("Failed to count contracts: " . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage()
+                'message' => 'Failed to count contracts: ' . $e->getMessage(),
+                'error_details' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
             ], 500);
         }
 
@@ -57,7 +69,8 @@ class BatchPaymentAllocationController extends Controller
                 'success' => true,
                 'message' => 'No contracts found',
                 'processed' => 0,
-                'skipped' => 0
+                'skipped' => 0,
+                'total' => 0
             ]);
         }
 
@@ -85,12 +98,14 @@ class BatchPaymentAllocationController extends Controller
                     } catch (\Exception $e) {
                         DB::rollBack();
 
+                        // Collect error but continue processing
                         $errorMsg = $e->getMessage();
-                        //Log::error("Contract {$contract->contract_no} failed: " . $errorMsg);
-
                         $errors[] = [
                             'contract' => $contract->contract_no,
-                            'error' => substr($errorMsg, 0, 200) // Limit error length
+                            'error' => $errorMsg,
+                            'type' => get_class($e),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine()
                         ];
 
                         $skipped++;
@@ -102,8 +117,20 @@ class BatchPaymentAllocationController extends Controller
                 $offset += $chunkSize;
 
             } catch (\Exception $e) {
-                //Log::error("Chunk failed at offset {$offset}: " . $e->getMessage());
-                $offset += $chunkSize; // Skip this chunk and continue
+                // Return chunk error immediately so you can see it
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chunk failed at offset ' . $offset . ': ' . $e->getMessage(),
+                    'error_details' => [
+                        'offset' => $offset,
+                        'chunk_size' => $chunkSize,
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString()
+                    ],
+                    'processed_so_far' => $processed,
+                    'skipped_so_far' => $skipped
+                ], 500);
             }
         }
 
@@ -113,7 +140,8 @@ class BatchPaymentAllocationController extends Controller
             'processed' => $processed,
             'skipped' => $skipped,
             'total' => $totalContracts,
-            'errors' => count($errors) > 0 ? $errors : null
+            'errors' => count($errors) > 0 ? $errors : null,
+            'error_count' => count($errors)
         ]);
     }
 
@@ -155,7 +183,13 @@ class BatchPaymentAllocationController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-                'contract' => $contract_no
+                'contract' => $contract_no,
+                'error_details' => [
+                    'type' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
             ], 500);
         }
     }
@@ -181,6 +215,7 @@ class BatchPaymentAllocationController extends Controller
 
         $processed = 0;
         $failed = 0;
+        $errors = [];
 
         try {
             $contracts = Contract::skip($start)->take($limit)->get();
@@ -200,19 +235,42 @@ class BatchPaymentAllocationController extends Controller
                     DB::rollBack();
                     $failed++;
 
+                    $errorDetails = [
+                        'contract' => $contract->contract_no,
+                        'error' => $e->getMessage(),
+                        'type' => get_class($e),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine()
+                    ];
+
+                    $errors[] = $errorDetails;
+
                     if ($isCli) {
                         echo "✗ Failed: {$contract->contract_no} - {$e->getMessage()}\n";
-                    } else {
-                        //Log::error("Failed: {$contract->contract_no} - {$e->getMessage()}");
+                        echo "   File: {$e->getFile()}:{$e->getLine()}\n";
                     }
                 }
             }
 
         } catch (\Exception $e) {
+            $errorMsg = $e->getMessage();
+
             if ($isCli) {
-                echo "Error: " . $e->getMessage() . "\n";
+                echo "Error: " . $errorMsg . "\n";
+                echo "File: " . $e->getFile() . "\n";
+                echo "Line: " . $e->getLine() . "\n";
+                echo "Trace: " . $e->getTraceAsString() . "\n";
             }
-            //Log::error("Batch error: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => $errorMsg,
+                'error_details' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            ], 500);
         }
 
         $result = [
@@ -220,14 +278,105 @@ class BatchPaymentAllocationController extends Controller
             'start' => $start,
             'limit' => $limit,
             'processed' => $processed,
-            'failed' => $failed
+            'failed' => $failed,
+            'errors' => $errors,
+            'total_processed' => $processed + $failed
         ];
 
         if ($isCli) {
-            echo json_encode($result) . "\n";
+            echo json_encode($result, JSON_PRETTY_PRINT) . "\n";
             return;
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * Debug endpoint - Test single contract with full error details
+     * Useful for debugging specific contracts
+     */
+    public function debugContract($contract_no)
+    {
+        set_time_limit(120);
+
+        try {
+            $contract = Contract::where('contract_no', $contract_no)->first();
+
+            if (!$contract) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Contract {$contract_no} not found"
+                ], 404);
+            }
+
+            DB::beginTransaction();
+            $result = $this->service->allocatePayments($contract_no);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Contract {$contract_no} processed successfully",
+                'data' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            // Return full exception details for debugging
+            return response()->json([
+                'success' => false,
+                'contract' => $contract_no,
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'type' => get_class($e),
+                    'code' => $e->getCode(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => explode("\n", $e->getTraceAsString())
+                ]
+            ], 500);
+        }
+    }
+
+    /**
+     * Test endpoint - Just echo any error immediately
+     * Use this for quick debugging
+     */
+    public function testContract($contract_no)
+    {
+        set_time_limit(120);
+
+        try {
+            $contract = Contract::where('contract_no', $contract_no)->first();
+
+            if (!$contract) {
+                echo "ERROR: Contract {$contract_no} not found\n";
+                return;
+            }
+
+            echo "Processing contract: {$contract_no}\n";
+
+            DB::beginTransaction();
+            $result = $this->service->allocatePayments($contract_no);
+            DB::commit();
+
+            echo "SUCCESS: Contract {$contract_no} processed\n";
+            print_r($result);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            // Echo everything so you can see it in API response
+            echo "========== ERROR DEBUG OUTPUT ==========\n";
+            echo "Contract: {$contract_no}\n";
+            echo "Error Message: " . $e->getMessage() . "\n";
+            echo "Error Type: " . get_class($e) . "\n";
+            echo "Error Code: " . $e->getCode() . "\n";
+            echo "File: " . $e->getFile() . "\n";
+            echo "Line: " . $e->getLine() . "\n";
+            echo "========== STACK TRACE ==========\n";
+            echo $e->getTraceAsString() . "\n";
+            echo "========== END DEBUG OUTPUT ==========\n";
+        }
     }
 }
