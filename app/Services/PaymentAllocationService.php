@@ -124,6 +124,8 @@ class PaymentAllocationService
 
             //PaymentBreakdown::truncate();
             //MasterAmortization::truncate();
+        PaymentBreakdown::where('contract_no', $contract_no)->delete();
+        MasterAmortization::where('contract_no', $contract_no)->delete();
 
             $this->paymentBreakdownService->refreshPaymentBreakdown($contract_no);
             $this->amortizationService->getOrGenerateAmortizationSchedule($contract_no);
