@@ -37,7 +37,7 @@ class BatchPaymentAllocationController extends Controller
                 $this->service->truncateAllData();
             }
         } catch (\Exception $e) {
-            Log::warning("Truncate skipped: " . $e->getMessage());
+            //Log::warning("Truncate skipped: " . $e->getMessage());
         }
 
         // Get total contracts count first
@@ -86,7 +86,7 @@ class BatchPaymentAllocationController extends Controller
                         DB::rollBack();
 
                         $errorMsg = $e->getMessage();
-                        Log::error("Contract {$contract->contract_no} failed: " . $errorMsg);
+                        //Log::error("Contract {$contract->contract_no} failed: " . $errorMsg);
 
                         $errors[] = [
                             'contract' => $contract->contract_no,
@@ -102,7 +102,7 @@ class BatchPaymentAllocationController extends Controller
                 $offset += $chunkSize;
 
             } catch (\Exception $e) {
-                Log::error("Chunk failed at offset {$offset}: " . $e->getMessage());
+                //Log::error("Chunk failed at offset {$offset}: " . $e->getMessage());
                 $offset += $chunkSize; // Skip this chunk and continue
             }
         }
@@ -203,7 +203,7 @@ class BatchPaymentAllocationController extends Controller
                     if ($isCli) {
                         echo "✗ Failed: {$contract->contract_no} - {$e->getMessage()}\n";
                     } else {
-                        Log::error("Failed: {$contract->contract_no} - {$e->getMessage()}");
+                        //Log::error("Failed: {$contract->contract_no} - {$e->getMessage()}");
                     }
                 }
             }
@@ -212,7 +212,7 @@ class BatchPaymentAllocationController extends Controller
             if ($isCli) {
                 echo "Error: " . $e->getMessage() . "\n";
             }
-            Log::error("Batch error: " . $e->getMessage());
+            //Log::error("Batch error: " . $e->getMessage());
         }
 
         $result = [

@@ -356,7 +356,6 @@ class PaymentAllocationService
 
                     // First, calculate sum of all balance_payments
                     $totalBalanceSum = 0;
-                    echo $rowCount . "\n";
 
                     if ($rowCount <= 2){
                         foreach ($pendingRowsList as $row) {
@@ -415,7 +414,6 @@ class PaymentAllocationService
                             $currentTimestamp = strtotime($currentRow['due_date']);
 
                             if ($nextRow) {
-                                echo $currentRow['balance_payment'] . "\n";
                                 $nextTimestamp = strtotime($nextRow['due_date']);
 
                                 if ($nexttoNextRow) {
@@ -529,8 +527,6 @@ class PaymentAllocationService
                         }
                     }
 
-                    echo "totalOverdueInterest: " . $totalOverdueInterest . "\n";
-
 
                     // FIRST: Pay overdue_interest from the payment
                     $paidInterest = 0;
@@ -545,8 +541,6 @@ class PaymentAllocationService
 
                     // SECOND: Apply remaining payment to overdue_rent (principal) for each row
                     if ($remainingPayment > 0) {
-
-                    //echo ' $remainingPayment  ' . $remainingPayment;
 
                         foreach ($pendingRowsList as $row) {
                             if ($remainingPayment <= 0) break;
