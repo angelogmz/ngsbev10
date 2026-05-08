@@ -20,7 +20,7 @@ class BatchPaymentAllocationController extends Controller
      * Allocate payments for all contracts in chunks
      * cPanel-friendly with minimal dependencies
      */
-    public function allocateAllContracts()
+    /*public function allocateAllContracts()
     {
         // Set execution limits for cPanel
         set_time_limit(300); // 5 minutes max
@@ -137,6 +137,183 @@ class BatchPaymentAllocationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Batch processing completed',
+            'processed' => $processed,
+            'skipped' => $skipped,
+            'total' => $totalContracts,
+            'errors' => count($errors) > 0 ? $errors : null,
+            'error_count' => count($errors)
+        ]);
+    }*/
+
+    /**
+     * Update contract statuses based on loan_end_date
+     * First set all NULL values to 'active'
+     * Then check dates against current date and set 'expired'
+     */
+    public function updateContractStatuses()
+    {
+        $currentDate = date('Y-m-d');
+
+        // First set all NULL to active
+        Contract::whereNull('status')->update(['status' => 'active']);
+
+        // Get all non-terminated contracts and update individually
+        $contracts = Contract::where('status', '!=', 'terminated')->get();
+
+        $expiredCount = 0;
+        $activeCount = 0;
+
+        foreach ($contracts as $contract) {
+            // Convert to timestamp for reliable comparison
+            $loanEndDate = strtotime($contract->loan_end_date);
+            $currentTimestamp = strtotime($currentDate);
+
+            if ($loanEndDate && $loanEndDate < $currentTimestamp) {
+                $contract->status = 'expired';
+                $contract->save();
+                $expiredCount++;
+            } elseif ($loanEndDate && $loanEndDate >= $currentTimestamp) {
+                $contract->status = 'active';
+                $contract->save();
+                $activeCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Statuses updated',
+            'expired' => $expiredCount,
+            'active' => $activeCount
+        ]);
+    }
+
+    public function allocateAllContracts()
+    {
+        // Set execution limits for cPanel
+        set_time_limit(300); // 5 minutes max
+        ini_set('memory_limit', '512M');
+
+        // First, update contract statuses based on loan_end_date
+        $this->updateContractStatuses();
+
+        $processed = 0;
+        $skipped = 0;
+        $errors = [];
+
+        try {
+            // Check if truncate method exists before calling
+            if (method_exists($this->service, 'truncateAllData')) {
+                $this->service->truncateAllData();
+            }
+        } catch (\Exception $e) {
+            // Return error immediately so you can see it in API
+            return response()->json([
+                'success' => false,
+                'message' => 'Truncate failed: ' . $e->getMessage(),
+                'error_details' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            ], 500);
+        }
+
+        // Get total contracts count excluding terminated contracts only
+        // This includes both 'active' and 'expired' statuses
+        $totalContracts = 0;
+        try {
+            $totalContracts = Contract::where('status', '!=', 'terminated')->count();
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to count contracts: ' . $e->getMessage(),
+                'error_details' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
+            ], 500);
+        }
+
+        if ($totalContracts === 0) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No contracts found (all contracts are terminated)',
+                'processed' => 0,
+                'skipped' => 0,
+                'total' => 0
+            ]);
+        }
+
+        // Process in smaller chunks for cPanel (25 instead of 50)
+        $chunkSize = 25;
+        $offset = 0;
+
+        while ($offset < $totalContracts) {
+            try {
+                // Get all contracts except terminated ones (includes active AND expired)
+                $contracts = Contract::where('status', '!=', 'terminated')
+                    ->skip($offset)
+                    ->take($chunkSize)
+                    ->get();
+
+                foreach ($contracts as $contract) {
+                    // Reset time limit for each contract
+                    set_time_limit(60);
+
+                    try {
+                        // Simple transaction without complex error wrapping
+                        DB::beginTransaction();
+
+                        // Run allocation for both active and expired contracts
+                        $result = $this->service->allocatePayments($contract->contract_no);
+
+                        DB::commit();
+                        $processed++;
+
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+
+                        // Collect error but continue processing
+                        $errorMsg = $e->getMessage();
+                        $errors[] = [
+                            'contract' => $contract->contract_no,
+                            'status' => $contract->status,
+                            'error' => $errorMsg,
+                            'type' => get_class($e),
+                            'file' => $e->getFile(),
+                            'line' => $e->getLine()
+                        ];
+
+                        $skipped++;
+                        // Continue to next contract
+                        continue;
+                    }
+                }
+
+                $offset += $chunkSize;
+
+            } catch (\Exception $e) {
+                // Return chunk error immediately so you can see it
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Chunk failed at offset ' . $offset . ': ' . $e->getMessage(),
+                    'error_details' => [
+                        'offset' => $offset,
+                        'chunk_size' => $chunkSize,
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString()
+                    ],
+                    'processed_so_far' => $processed,
+                    'skipped_so_far' => $skipped
+                ], 500);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch processing completed (active and expired contracts processed, terminated excluded)',
             'processed' => $processed,
             'skipped' => $skipped,
             'total' => $totalContracts,

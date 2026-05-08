@@ -334,4 +334,39 @@ class ContractController extends Controller
         ], 200);
     }
 
+    public function terminateContract($id){
+        // Find contract by contract_no (not by ID, consistent with your updateContract)
+        $contract = Contract::where('contract_no', $id)->first();
+
+        if(!$contract){
+            return response()->json([
+                'status' => 404,
+                'message' => 'Contract not found'
+            ], 404);
+        }
+
+        // Check if contract is already terminated
+        if($contract->status === 'terminated'){
+            return response()->json([
+                'status' => 400,
+                'message' => 'Contract is already terminated'
+            ], 400);
+        }
+
+        // Update only the status column
+        $contract->update([
+            'status' => 'terminated'
+        ]);
+
+        // Optional: You might want to delete related data like in updateContract
+        // $this->amortizationService->deleteAmortizationSchedule($contract->contract_no);
+        // $this->paymentBreakdownService->deletePaymentBreakdowns($contract->contract_no);
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Contract terminated successfully!',
+            'data' => $contract
+        ], 200);
+    }
+
 }
