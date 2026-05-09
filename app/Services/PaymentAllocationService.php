@@ -312,10 +312,26 @@ class PaymentAllocationService
                                 $remainingPayment -= $amountDue;
                                 $amortizationData[$index]['completed'] = 1;
                                 $amortizationData[$index]['balance_payment'] = 0;
+
+                                 $paymentsData[$pIndex]['current_rent'] = $amortizationData[$index]['current_rent'];
+                                 $paymentsData[$pIndex]['current_interest'] = $amortizationData[$index]['current_interest'];
                             } else {
                                 $paymentsData[$pIndex]['overdue_rent'] += $remainingPayment;
                                 $amortizationData[$index]['balance_payment'] -= $remainingPayment;
                                 $remainingPayment = 0;
+
+                                $breakOverDue = $paymentsData[$pIndex]['overdue_rent'];
+
+                                if($breakOverDue >= $amortizationData[$index]['current_interest']){
+                                    $paymentsData[$pIndex]['current_interest'] = $amortizationData[$index]['current_interest'];
+                                    $paymentsData[$pIndex]['current_rent'] = min(
+                                        $breakOverDue - $amortizationData[$index]['current_interest'],
+                                        $amortizationData[$index]['current_rent']
+                                    );
+                                } else {
+                                    $paymentsData[$pIndex]['current_interest'] = $breakOverDue;
+                                    $paymentsData[$pIndex]['current_rent'] = 0;
+                                }
                             }
                         }
 
@@ -561,10 +577,27 @@ class PaymentAllocationService
                                 $remainingPayment -= $amountDue;
                                 $amortizationData[$index]['completed'] = 1;
                                 $amortizationData[$index]['balance_payment'] = 0;
+
+                                $paymentsData[$pIndex]['current_rent'] = $amortizationData[$index]['current_rent'];
+                                $paymentsData[$pIndex]['current_interest'] = $amortizationData[$index]['current_interest'];
+
                             } else {
                                 $paymentsData[$pIndex]['overdue_rent'] += $remainingPayment;
                                 $amortizationData[$index]['balance_payment'] -= $remainingPayment;
                                 $remainingPayment = 0;
+
+                                $breakOverDue = $paymentsData[$pIndex]['overdue_rent'];
+
+                                if($breakOverDue >= $amortizationData[$index]['current_interest']){
+                                    $paymentsData[$pIndex]['current_interest'] = $amortizationData[$index]['current_interest'];
+                                    $paymentsData[$pIndex]['current_rent'] = min(
+                                        $breakOverDue - $amortizationData[$index]['current_interest'],
+                                        $amortizationData[$index]['current_rent']
+                                    );
+                                } else {
+                                    $paymentsData[$pIndex]['current_interest'] = $breakOverDue;
+                                    $paymentsData[$pIndex]['current_rent'] = 0;
+                                }
                             }
                         }
                     }
