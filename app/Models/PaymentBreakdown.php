@@ -35,6 +35,8 @@ class PaymentBreakdown extends Model
         'payment_date',
         'overdue_interest',
         'overdue_rent',
+        'overdue_cur_interest',
+        'overdue_cur_principal',
         'current_interest',
         'current_rent',
         'future_rent',

@@ -12,6 +12,9 @@ use App\Http\Controllers\Api\PaymentAllocationController;
 use App\Http\Controllers\Api\PaymentUuidController;
 use App\Http\Controllers\Api\BatchPaymentAllocationController;
 use App\Http\Controllers\Api\OverdueReportController;
+use App\Http\Controllers\Api\ReportController;
+
+
 
 
 
@@ -112,6 +115,20 @@ Route::group([
 
     //Overdue Report
     Route::get('/export-overdue-contracts', [OverdueReportController::class, 'exportOverdueContracts']);
+
+    // Collection Report Routes
+    Route::prefix('reports')->group(function () {
+        // Daily collection report
+        Route::get('collection/daily', [ReportController::class, 'getDailyCollectionReport']);
+
+        // Date range collection report
+        Route::get('collection/range', [ReportController::class, 'getDateRangeCollectionReport']);
+
+        // User collection report
+        Route::get('collection/user', [ReportController::class, 'getUserCollectionReport']);
+
+        Route::get('/collection/date-range', [ReportController::class, 'getDateRangeCollectionReport']);
+    });
 
 
 
