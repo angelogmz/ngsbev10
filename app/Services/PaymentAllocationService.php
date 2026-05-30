@@ -1009,6 +1009,7 @@ class PaymentAllocationService
                                     $amortizationData[$futureIndex]['current_rent'] = 0;
                                 } else {
                                     if ($remainingPayment >= $futureInterestAmount) {
+                                        $amortizationData[$futureIndex]['balance_payment'] -= $remainingPayment;
                                         $paymentsData[$pIndex]['future_interest'] += $futureInterestAmount;
                                         $remainingPayment -= $futureInterestAmount;
                                         $amortizationData[$futureIndex]['current_interest'] = 0;
@@ -1016,13 +1017,12 @@ class PaymentAllocationService
                                         $paymentsData[$pIndex]['future_principal'] += $remainingPayment;
                                         $paymentsData[$pIndex]['future_rent'] += $futureInterestAmount + $remainingPayment;
                                         $amortizationData[$futureIndex]['current_rent'] -= $remainingPayment;
-                                        $amortizationData[$futureIndex]['balance_payment'] -= $remainingPayment;
                                         $remainingPayment = 0;
                                     } else {
+                                        $amortizationData[$futureIndex]['balance_payment'] -= $remainingPayment;
                                         $paymentsData[$pIndex]['future_interest'] += $remainingPayment;
                                         $paymentsData[$pIndex]['future_rent'] += $remainingPayment;
                                         $amortizationData[$futureIndex]['current_interest'] -= $remainingPayment;
-                                        $amortizationData[$futureIndex]['balance_payment'] -= $remainingPayment;
                                         $remainingPayment = 0;
                                     }
                                     break;
