@@ -145,6 +145,73 @@ class PaymentController extends Controller
         }
     }
 
+    /**
+     * Update a payment
+     */
+    public function updatePayment(Request $request, $pymnt_id){
+        $validator = Validator::make($request->all(), [
+            'payment_amount' => 'required|numeric|min:0.01',
+            'payment_date' => 'required|date'
+        ]);
 
+        if($validator->fails()){
+            return response()->json([
+                'status' => 422,
+                'errors' => $validator->messages()
+            ], 422);
+        }
+
+        try {
+            $payment = Payment::where('pymnt_id', $pymnt_id)->first();
+
+            if(!$payment){
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'Payment not found'
+                ], 404);
+            }
+
+            $payment->payment_amount = $request->payment_amount;
+            $payment->payment_date = $request->payment_date;
+            $payment->save();
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Payment updated successfully!',
+                'payment' => $payment
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to update payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a payment
+     */
+    public function deletePayment($pymnt_id){
+        try {
+            $payment = Payment::where('pymnt_id', $pymnt_id)->first();
+
+            if(!$payment){
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'Payment not found'
+                ], 404);
+            }
+
+            $contractNo = $payment->contract_no;
+            $payment->delete();
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to delete payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
 }

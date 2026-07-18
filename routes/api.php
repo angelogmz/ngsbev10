@@ -75,6 +75,10 @@ Route::group([
 
     Route::get('payment-breakdown/{contract_no}', [PaymentAllocationController::class, 'getPaymentBreakdown']);
 
+    Route::put('payments/{pymnt_id}', [PaymentController::class, 'updatePayment']);
+
+    Route::delete('payments/{pymnt_id}', [PaymentController::class, 'deletePayment']);
+
 
     //Gurantors
 
