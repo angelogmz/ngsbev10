@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\Contract;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use App\Models\Contract;
+use App\Models\Payment;
+use App\Models\Guarantor;
 use App\Services\AmortizationService;
 use App\Services\PaymentBreakdownService;
-use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 
 class ContractController extends Controller
@@ -368,5 +370,68 @@ class ContractController extends Controller
             'data' => $contract
         ], 200);
     }
+
+        // ===== NEW METHOD: Update Contract Number Only =====
+    /**
+     * Update only the contract number and cascade to payments table
+     * Simple method following the same pattern as updateContract
+     */
+    public function updateContractNumber(Request $request, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'new_contract_no' => 'required|string|unique:contracts,contract_no'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 422,
+                'errors' => $validator->messages()
+            ], 422);
+        }
+
+        $contract = Contract::where('contract_no', $id)->first();
+
+        if (!$contract) {
+            return response()->json([
+                'status' => 404,
+                'message' => 'Contract not found'
+            ], 404);
+        }
+
+        $oldContractNo = $contract->contract_no;
+        $newContractNo = $request->new_contract_no;
+
+        if ($oldContractNo === $newContractNo) {
+            return response()->json([
+                'status' => 422,
+                'message' => 'New contract number is the same as the current one'
+            ], 422);
+        }
+
+        // Update contract number
+        $contract->contract_no = $newContractNo;
+        $contract->save();
+
+        // Update payments table with new contract number
+        Payment::where('contract_no', $oldContractNo)
+            ->update(['contract_no' => $newContractNo]);
+
+        // Update guarantors table with new contract number
+        Guarantor::where('contract_no', $oldContractNo)
+            ->update(['contract_no' => $newContractNo]);
+
+        // Delete existing amortization and payment breakdowns for the OLD contract
+        $this->amortizationService->deleteAmortizationSchedule($oldContractNo);
+        $this->paymentBreakdownService->deletePaymentBreakdowns($oldContractNo);
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Contract number updated successfully!',
+            'old_contract_no' => $oldContractNo,
+            'new_contract_no' => $newContractNo,
+            'data' => $contract
+        ], 200);
+    }
+    // ===== END NEW METHOD =====
 
 }
