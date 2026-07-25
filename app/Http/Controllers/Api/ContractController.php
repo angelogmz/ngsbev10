@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Models\Payment;
-use App\Models\guarantor;
+use App\Models\Guarantor;
 use App\Services\AmortizationService;
 use App\Services\PaymentBreakdownService;
 use Carbon\Carbon;
@@ -416,8 +416,8 @@ class ContractController extends Controller
         Payment::where('contract_no', $oldContractNo)
             ->update(['contract_no' => $newContractNo]);
 
-        // Update guarantors table with new contract number
-        guarantor::where('contract_no', $oldContractNo)
+        // Update Guarantors table with new contract number
+        Guarantor::where('contract_no', $oldContractNo)
             ->update(['contract_no' => $newContractNo]);
 
         // Delete existing amortization and payment breakdowns for the OLD contract
