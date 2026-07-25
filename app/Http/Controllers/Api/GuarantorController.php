@@ -132,7 +132,7 @@ class GuarantorController extends Controller
             'name' => 'required|string|max:200',
             'contract_no' => 'required|string|max:50',
             'nic' => 'string|max:20,' . $id,
-            'date_of_birth' => 'nullable|date_format:d/m/Y', // Format: DD/MM/YYYY
+            'date_of_birth' => 'nullable', // Format: DD/MM/YYYY
             'civil_status' => 'nullable|string|max:50',
             'contact_no' => 'required|string|max:20',
             'address' => 'required|string|max:200',
