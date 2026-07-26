@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Guarantor;
+use App\Models\guarantor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
-class GuarantorController extends Controller
+class guarantorController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -20,7 +20,7 @@ class GuarantorController extends Controller
         //
     }
 
-    public function addGuarantor(Request $request){
+    public function addguarantor(Request $request){
 
         $validator = Validator::make($request->all(), [
             'title' => 'nullable|string|max:5',
@@ -41,7 +41,7 @@ class GuarantorController extends Controller
             ], 422);
         }
         else{
-           $customer = Guarantor::create([
+           $customer = guarantor::create([
                 'title' => $request->title,
                 'name' => $request->name,
                 'contract_no' => $request->contract_no,
@@ -55,7 +55,7 @@ class GuarantorController extends Controller
             if($customer){
                 return response()->json([
                     'status' => 200,
-                    'message' => 'Guarantor Added succesfully!'
+                    'message' => 'guarantor Added succesfully!'
                 ], 200);
             }
             else{
@@ -68,7 +68,7 @@ class GuarantorController extends Controller
     }
 
     public function searchByContract($contract_no){
-        $contrctSearch = Guarantor::where('contract_no', $contract_no)->get();
+        $contrctSearch = guarantor::where('contract_no', $contract_no)->get();
         if($contrctSearch){
             return response()->json([
                 'status' => 200,
@@ -78,7 +78,7 @@ class GuarantorController extends Controller
         else{
             return response()->json([
                 'status' => 404,
-                'message' => 'No such Guarantor found'
+                'message' => 'No such guarantor found'
             ], 500);
         }
     }
@@ -107,10 +107,10 @@ class GuarantorController extends Controller
     /**
      * Display the specified resource.
      *
-     * @param  \App\Models\Guarantor  $Guarantor
+     * @param  \App\Models\guarantor  $guarantor
      * @return \Illuminate\Http\Response
      */
-    public function show(Guarantor $Guarantor)
+    public function show(guarantor $guarantor)
     {
         //
     }
@@ -118,10 +118,10 @@ class GuarantorController extends Controller
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Models\Guarantor  $Guarantor
+     * @param  \App\Models\guarantor  $guarantor
      * @return \Illuminate\Http\Response
      */
-    public function edit(Guarantor $Guarantor)
+    public function edit(guarantor $guarantor)
     {
         //
     }
@@ -130,10 +130,10 @@ class GuarantorController extends Controller
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Guarantor  $Guarantor
+     * @param  \App\Models\guarantor  $guarantor
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, Guarantor $Guarantor)
+    public function update(Request $request, guarantor $guarantor)
     {
         //
     }
@@ -141,10 +141,10 @@ class GuarantorController extends Controller
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Models\Guarantor  $Guarantor
+     * @param  \App\Models\guarantor  $guarantor
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Guarantor $Guarantor)
+    public function destroy(guarantor $guarantor)
     {
         //
     }
