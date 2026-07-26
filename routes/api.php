@@ -90,6 +90,8 @@ Route::group([
 
     Route::put('guarantors/update-guarantor/{id}', [GuarantorController::class, 'updateGuarantor']);
 
+    Route::delete('guarantors/delete/{id}', [GuarantorController::class, 'deleteGuarantor']);
+
     //Contracts
 
     Route::get('contracts', [ContractController::class, 'index']);
