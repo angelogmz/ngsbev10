@@ -86,6 +86,9 @@ Route::group([
 
     Route::post('guarantors', [GuarantorController::class, 'addGuarantor']);
 
+    Route::get('guarantors/get-guarantor/{id}', [GuarantorController::class, 'getGuarantor']);
+
+    Route::put('guarantors/update-guarantor/{id}', [GuarantorController::class, 'updateGuarantor']);
 
     //Contracts
 

@@ -148,4 +148,99 @@ class guarantorController extends Controller
     {
         //
     }
+
+    /**
+     * Get a single guarantor by ID
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getguarantor($id)
+    {
+        try {
+            $guarantor = guarantor::find($id);
+
+            if ($guarantor) {
+                return response()->json([
+                    'status' => 200,
+                    'guarantor' => $guarantor
+                ], 200);
+            } else {
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'guarantor not found'
+                ], 404);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error retrieving guarantor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update a guarantor
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateguarantor(Request $request, $id)
+    {
+        try {
+            $guarantor = guarantor::find($id);
+
+            if (!$guarantor) {
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'guarantor not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => 'nullable|string|max:5',
+                'name' => 'required|string|max:200',
+                'contract_no' => 'required|string|max:50',
+                'nic' => 'nullable|string|max:20',
+                'date_of_birth' => 'nullable|string',
+                'civil_status' => 'nullable|string|max:50',
+                'contact_no' => 'required|string|max:20',
+                'address' => 'required|string|max:200',
+                'email' => 'nullable|email|max:50'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => 422,
+                    'errors' => $validator->messages()
+                ], 422);
+            }
+
+            $guarantor->update([
+                'title' => $request->title,
+                'name' => $request->name,
+                'contract_no' => $request->contract_no,
+                'nic' => $request->nic,
+                'date_of_birth' => $request->date_of_birth,
+                'civil_status' => $request->civil_status,
+                'contact_no' => $request->contact_no,
+                'address' => $request->address,
+                'email' => $request->email
+            ]);
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'guarantor updated successfully!',
+                'guarantor' => $guarantor
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Failed to update guarantor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
