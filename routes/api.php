@@ -82,13 +82,9 @@ Route::group([
 
     //Gurantors
 
-    Route::get('guarantors/contract/{contractId}', [GuarantorController::class, 'searchByContract']);
+    Route::get('guarantors/{contractId}', [GuarantorController::class, 'searchByContract']);
 
     Route::post('guarantors', [GuarantorController::class, 'addGuarantor']);
-
-    Route::get('guarantors/{id}', [GuarantorController::class, 'getGuarantor']);
-
-    Route::put('guarantors/{id}', [GuarantorController::class, 'updateGuarantor']);
 
 
     //Contracts
@@ -99,7 +95,7 @@ Route::group([
 
     Route::post('contracts/add', [ContractController::class, 'addContract']);
 
-    Route::put('contracts/{contract_no}/update-number', [ContractController::class, 'updateContractNumber']);
+    //Route::get('contracts/{id}', [ContractController::class, 'editContract']);
 
     Route::put('contracts/{id}/edit', [ContractController::class, 'updateContract']);
 

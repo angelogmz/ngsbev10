@@ -67,7 +67,7 @@ class GuarantorController extends Controller
         }
     }
 
-    /*public function searchByContract($contract_no){
+    public function searchByContract($contract_no){
         $contrctSearch = Guarantor::where('contract_no', $contract_no)->get();
         if($contrctSearch){
             return response()->json([
@@ -79,36 +79,6 @@ class GuarantorController extends Controller
             return response()->json([
                 'status' => 404,
                 'message' => 'No such Guarantor found'
-            ], 500);
-        }
-    }*/
-
-    public function searchByContract($contract_no){
-        try {
-            $contrctSearch = Guarantor::where('contract_no', $contract_no)->get();
-
-            if($contrctSearch->count() > 0){
-                return response()->json([
-                    'status' => 200,
-                    'contract' => $contrctSearch
-                ], 200);
-            }
-            else{
-                return response()->json([
-                    'status' => 404,
-                    'message' => 'No such Guarantor found'
-                ], 404);
-            }
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 500,
-                'error' => [
-                    'message' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                    'trace' => $e->getTraceAsString()
-                ]
             ], 500);
         }
     }
