@@ -98,7 +98,7 @@ Route::group([
 
     Route::post('contracts/add', [ContractController::class, 'addContract']);
 
-    //Route::get('contracts/{id}', [ContractController::class, 'editContract']);
+    Route::put('contracts/{contract_no}/update-number', [ContractController::class, 'updateContractNumber']);
 
     Route::put('contracts/{id}/edit', [ContractController::class, 'updateContract']);
 

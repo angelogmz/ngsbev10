@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Models\Payment;
-use App\Models\Guarantor;
+use App\Models\guarantor;
 use App\Services\AmortizationService;
 use App\Services\PaymentBreakdownService;
 use Carbon\Carbon;
@@ -371,11 +371,6 @@ class ContractController extends Controller
         ], 200);
     }
 
-        // ===== NEW METHOD: Update Contract Number Only =====
-    /**
-     * Update only the contract number and cascade to payments table
-     * Simple method following the same pattern as updateContract
-     */
     public function updateContractNumber(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
@@ -417,7 +412,7 @@ class ContractController extends Controller
             ->update(['contract_no' => $newContractNo]);
 
         // Update Guarantors table with new contract number
-        Guarantor::where('contract_no', $oldContractNo)
+        guarantor::where('contract_no', $oldContractNo)
             ->update(['contract_no' => $newContractNo]);
 
         // Delete existing amortization and payment breakdowns for the OLD contract
@@ -432,6 +427,5 @@ class ContractController extends Controller
             'data' => $contract
         ], 200);
     }
-    // ===== END NEW METHOD =====
 
 }
