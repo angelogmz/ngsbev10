@@ -67,7 +67,7 @@ class GuarantorController extends Controller
         }
     }
 
-    public function searchByContract($contract_no){
+    /*public function searchByContract($contract_no){
         $contrctSearch = Guarantor::where('contract_no', $contract_no)->get();
         if($contrctSearch){
             return response()->json([
@@ -79,6 +79,36 @@ class GuarantorController extends Controller
             return response()->json([
                 'status' => 404,
                 'message' => 'No such Guarantor found'
+            ], 500);
+        }
+    }*/
+
+    public function searchByContract($contract_no){
+        try {
+            $contrctSearch = Guarantor::where('contract_no', $contract_no)->get();
+
+            if($contrctSearch->count() > 0){
+                return response()->json([
+                    'status' => 200,
+                    'contract' => $contrctSearch
+                ], 200);
+            }
+            else{
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'No such Guarantor found'
+                ], 404);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]
             ], 500);
         }
     }
@@ -107,10 +137,10 @@ class GuarantorController extends Controller
     /**
      * Display the specified resource.
      *
-     * @param  \App\Models\guarantor  $guarantor
+     * @param  \App\Models\Guarantor  $Guarantor
      * @return \Illuminate\Http\Response
      */
-    public function show(guarantor $guarantor)
+    public function show(Guarantor $Guarantor)
     {
         //
     }
@@ -118,10 +148,10 @@ class GuarantorController extends Controller
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Models\guarantor  $guarantor
+     * @param  \App\Models\Guarantor  $Guarantor
      * @return \Illuminate\Http\Response
      */
-    public function edit(guarantor $guarantor)
+    public function edit(Guarantor $Guarantor)
     {
         //
     }
@@ -130,10 +160,10 @@ class GuarantorController extends Controller
      * Update the specified resource in storage.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\guarantor  $guarantor
+     * @param  \App\Models\Guarantor  $Guarantor
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, guarantor $guarantor)
+    public function update(Request $request, Guarantor $Guarantor)
     {
         //
     }
@@ -141,10 +171,10 @@ class GuarantorController extends Controller
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Models\guarantor  $guarantor
+     * @param  \App\Models\Guarantor  $Guarantor
      * @return \Illuminate\Http\Response
      */
-    public function destroy(guarantor $guarantor)
+    public function destroy(Guarantor $Guarantor)
     {
         //
     }
