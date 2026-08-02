@@ -526,7 +526,7 @@ class PaymentAllocationService
                                         if ($index !== false) {
                                             $amortizationData[$index]['overdue_int'] = 0;
                                         }
-                                        continue;
+                                        //continue;
                                     } else if(empty($paymentAfterNext)){
                                         $paymentsTillNext = array_filter($paymentsData, function($payment) use ($currentTimestamp, $nextTimestamp) {
                                             $paymentTimestamp = strtotime($payment['payment_date']);
@@ -590,6 +590,12 @@ class PaymentAllocationService
                                 $currentTimestamp = strtotime($currentRow['due_date']);
                                 $paymentTimestamp = strtotime($paymentDate);
 
+                                // Get the index first
+                                $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
+                                if ($index === false) {
+                                    continue; // Skip if row not found
+                                }
+
                                 $totalBalanceSum = 0;
                                 for ($j = 0; $j <= $i; $j++) {
                                     $prevRow = $pendingRowsList[$j];
@@ -603,10 +609,7 @@ class PaymentAllocationService
 
                                 if ($daysDiff > 0) {
                                     $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
-                                    $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
-                                    if ($index !== false) {
-                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
-                                    }
+                                    $amortizationData[$index]['overdue_int'] = $overdue_int;
                                 } else {
                                     $amortizationData[$index]['overdue_int'] = 0;
                                 }
