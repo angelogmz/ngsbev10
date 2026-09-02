@@ -183,6 +183,7 @@ class PaymentAllocationService
 
                 // If no pending rows, allocate to the first upcoming row
                 if ($rowCount === 0) {
+
                     $futureRows = array_filter($amortizationData, function($row) use ($paymentDate) {
                         return $row['due_date'] > $paymentDate && $row['completed'] == 0;
                     });
@@ -194,18 +195,18 @@ class PaymentAllocationService
                     if (!empty($futureRows) && $remainingPayment > 0) {
                         $firstRow = reset($futureRows);
                         $index = array_search($firstRow['id'], array_column($amortizationData, 'id'));
-
                         if ($index !== false) {
                             // Pay current_interest
                             $interest = $amortizationData[$index]['current_interest'];
                             if ($remainingPayment >= $interest) {
                                 $paymentsData[$pIndex]['current_interest'] = $interest;
+                                $amortizationData[$index]['balance_payment'] -= $interest;
                                 $remainingPayment -= $interest;
                             } else {
                                 $paymentsData[$pIndex]['current_interest'] = $remainingPayment;
+                                $amortizationData[$index]['balance_payment'] -= $remainingPayment;
                                 $remainingPayment = 0;
                             }
-
                             // Pay current_rent (principal)
                             if ($remainingPayment > 0) {
                                 $principal = $amortizationData[$index]['current_rent'];
@@ -220,6 +221,8 @@ class PaymentAllocationService
                                     $remainingPayment = 0;
                                 }
                             }
+
+                            //print_r('remaining payment after current row: ' . $amortizationData[$index]['balance_payment'] . PHP_EOL);
 
                             // Any remaining becomes future_rent and deduct from future rows
                             if ($remainingPayment > 0) {
@@ -298,9 +301,12 @@ class PaymentAllocationService
 
                         if ($paymentTimestamp > $amortizationTimestamp) {
                             $daysDiff = floor(($paymentTimestamp - $amortizationTimestamp) / (60 * 60 * 24));
+                            print_r('payment date: ' . $payment['payment_date'] . PHP_EOL);
+                            print_r('days diff: ' . $daysDiff . PHP_EOL);
+                            print_r('balance payment: ' . $row['balance_payment'] . PHP_EOL);
                             $contractDefIntRate = (float) $data->def_int_rate;
-                            $overdue_int = ($daysDiff * $contractDefIntRate * $amortizationData[$index]['balance_payment']) / 100;
-                            $amortizationData[$index]['overdue_int'] += $overdue_int;
+                            $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
+                            $row['overdue_int'] += $overdue_int;
                         }
 
                         if ($isOnTime) {
@@ -398,6 +404,7 @@ class PaymentAllocationService
                         } else {
                             // OVERDUE PAYMENT: Original logic for overdue payments
                             // FIRST: Pay overdue_interest from the payment
+
                             if ($remainingPayment >= $overdue_int) {
                                 $paymentsData[$pIndex]['overdue_interest'] = $overdue_int;
                                 $remainingPayment -= $overdue_int;
@@ -501,6 +508,7 @@ class PaymentAllocationService
                 else {
                     // Step 1: Calculate overdue_int for each row based on days diff to next row
                     $totalBalanceSum = 0;
+
 
                     if ($rowCount <= 2){
                         foreach ($pendingRowsList as $row) {
