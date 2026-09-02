@@ -222,8 +222,6 @@ class PaymentAllocationService
                                 }
                             }
 
-                            //print_r('remaining payment after current row: ' . $amortizationData[$index]['balance_payment'] . PHP_EOL);
-
                             // Any remaining becomes future_rent and deduct from future rows
                             if ($remainingPayment > 0) {
                                 $remainingFutureRent = $remainingPayment;
@@ -301,9 +299,6 @@ class PaymentAllocationService
 
                         if ($paymentTimestamp > $amortizationTimestamp) {
                             $daysDiff = floor(($paymentTimestamp - $amortizationTimestamp) / (60 * 60 * 24));
-                            print_r('payment date: ' . $payment['payment_date'] . PHP_EOL);
-                            print_r('days diff: ' . $daysDiff . PHP_EOL);
-                            print_r('balance payment: ' . $row['balance_payment'] . PHP_EOL);
                             $contractDefIntRate = (float) $data->def_int_rate;
                             $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
                             $row['overdue_int'] += $overdue_int;
