@@ -299,8 +299,7 @@ class PaymentAllocationService
 
                         if ($paymentTimestamp > $amortizationTimestamp) {
                             $daysDiff = floor(($paymentTimestamp - $amortizationTimestamp) / (60 * 60 * 24));
-                            $contractDefIntRate = (float) $data->def_int_rate;
-                            $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']);
+                            $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
                             $row['overdue_int'] += $overdue_int;
                         }
 
