@@ -299,8 +299,14 @@ class PaymentAllocationService
 
                         if ($paymentTimestamp > $amortizationTimestamp) {
                             $daysDiff = floor(($paymentTimestamp - $amortizationTimestamp) / (60 * 60 * 24));
-                            $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
-                            $row['overdue_int'] += $overdue_int;
+                            if($row['overdue_int'] > 0){
+                                $overdue_int = $row['overdue_int'];
+                            } else {
+                                $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
+                                $row['overdue_int'] += $overdue_int;
+                            }
+
+
                         }
 
                         if ($isOnTime) {
@@ -402,8 +408,10 @@ class PaymentAllocationService
                             if ($remainingPayment >= $overdue_int) {
                                 $paymentsData[$pIndex]['overdue_interest'] = $overdue_int;
                                 $remainingPayment -= $overdue_int;
+                                $row['overdue_int'] = 0;
                             } else {
                                 $paymentsData[$pIndex]['overdue_interest'] = $remainingPayment;
+                                $row['overdue_int'] -= $remainingPayment;
                                 $remainingPayment = 0;
                             }
 
