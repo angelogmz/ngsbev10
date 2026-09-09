@@ -539,17 +539,24 @@ class PaymentAllocationService
 
                                 $nextTimestamp = strtotime($nextRow['due_date']);
                                 $daysDiff = floor(($nextTimestamp - $startTimestamp) / (60 * 60 * 24));
-
-                                $overdue_int = ($contractDefIntRate * $daysDiff * $currentRow['balance_payment']) / 100;
-                                $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                if($overdue_int > 0){
+                                    $overdue_int = $currentRow['overdue_int'];
+                                } else {
+                                    $overdue_int = ($contractDefIntRate * $daysDiff * $currentRow['balance_payment']) / 100;
+                                    $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                }
                             } else {
                                 $currentTimestamp = strtotime($currentRow['due_date']);
                                 $paymentTimestamp = strtotime($paymentDate);
                                 $daysDiff = floor(($paymentTimestamp - $currentTimestamp) / (60 * 60 * 24));
 
                                 if ($daysDiff > 0) {
-                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
-                                    $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    if($overdue_int > 0){
+                                        $overdue_int = $currentRow['overdue_int'];
+                                    } else {
+                                        $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    }
                                 }
                             }
                         }
@@ -636,11 +643,14 @@ class PaymentAllocationService
                                     } else {
                                         $daysDiff = floor(($nextTimestamp - $currentTimestamp) / 86400);
                                     }
-
-                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
                                     $index = array_search($currentRow['id'], array_column($amortizationData, 'id'));
-                                    if ($index !== false) {
-                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    if($amortizationData[$index]['overdue_int'] > 0){
+                                        $overdue_int = $amortizationData[$index]['overdue_int'];
+                                    } else {
+                                        $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                        if ($index !== false) {
+                                            $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                        }
                                     }
                                 }
                             } else {
@@ -673,8 +683,12 @@ class PaymentAllocationService
                                     $amortizationData[$index]['overdue_int'] = 0;
                                 } else {
                                     $daysDiff = floor(($paymentTimestamp - $currentTimestamp) / (60 * 60 * 24));
-                                    $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
-                                    $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    if($amortizationData[$index]['overdue_int'] > 0){
+                                        $overdue_int = $amortizationData[$index]['overdue_int'];
+                                    } else {
+                                        $overdue_int = ($contractDefIntRate * $daysDiff * $totalBalanceSum) / 100;
+                                        $amortizationData[$index]['overdue_int'] = $overdue_int;
+                                    }
                                 }
                             }
                         }
