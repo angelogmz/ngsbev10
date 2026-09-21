@@ -297,16 +297,21 @@ class PaymentAllocationService
                         // Check if payment is on-time or early
                         $isOnTime = ($paymentTimestamp <= $amortizationTimestamp);
 
+
                         if ($paymentTimestamp > $amortizationTimestamp) {
                             $daysDiff = floor(($paymentTimestamp - $amortizationTimestamp) / (60 * 60 * 24));
-                            if($row['overdue_int'] > 0){
-                                $overdue_int = $row['overdue_int'];
+
+                            if ((float) $row['overdue_int'] > 0) {
+                                $overdue_int = (float) $row['overdue_int'];
                             } else {
-                                $overdue_int = ($daysDiff * $contractDefIntRate * $row['balance_payment']) / 100;
-                                $row['overdue_int'] += $overdue_int;
+                                $overdue_int = (
+                                    $daysDiff
+                                    * (float) $contractDefIntRate
+                                    * (float) $row['balance_payment']
+                                ) / 100;
+
+                                $row['overdue_int'] = (float) $row['overdue_int'] + $overdue_int;
                             }
-
-
                         }
 
                         if ($isOnTime) {
