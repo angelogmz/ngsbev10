@@ -175,6 +175,8 @@ class PaymentAllocationService
                 $remaining = round($payment['payment_amount'], 2);
                 $payDay    = substr((string) $payment['payment_date'], 0, 10);
 
+                $firstRow = true;   // the first row a payment touches is its "current" amortization
+
                 // keep going, row after row, until the payment is used up
                 while ($remaining > 0) {
 
@@ -223,12 +225,17 @@ class PaymentAllocationService
                     // 3) RECORD on the payment (+= because one payment can clear several rows)
                     $paymentsData[$pIndex]['overdue_interest'] = round($paymentsData[$pIndex]['overdue_interest'] + $payOverdue, 2);
 
-                    if ($dueDay <= $payDay) {              // due on/before the payment day => current
+                    if ($dueDay <= $payDay || $firstRow) {
+                        // overdue / due today / the current amortization (even if due in a few days)
                         $paymentsData[$pIndex]['current_interest'] = round($paymentsData[$pIndex]['current_interest'] + $payInterest, 2);
                         $paymentsData[$pIndex]['current_rent']     = round($paymentsData[$pIndex]['current_rent'] + $payRent, 2);
-                    } else {                               // not due yet => paid in advance
-                        $paymentsData[$pIndex]['future_rent'] = round($paymentsData[$pIndex]['future_rent'] + $payInterest + $payRent, 2);
+                    } else {
+                        // later rows, not due yet => paid in advance: total in future_rent, split kept as well
+                        $paymentsData[$pIndex]['future_rent']      = round($paymentsData[$pIndex]['future_rent'] + $payInterest + $payRent, 2);
+                        $paymentsData[$pIndex]['future_interest']  = round($paymentsData[$pIndex]['future_interest'] + $payInterest, 2);
+                        $paymentsData[$pIndex]['future_principal'] = round($paymentsData[$pIndex]['future_principal'] + $payRent, 2);
                     }
+                    $firstRow = false;
 
                     unset($row);
                 }
